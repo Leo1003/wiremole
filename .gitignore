@@ -1,0 +1,23 @@
+##
+## Rust Gitignore file
+##
+
+# VS Code Workspace
+*.code-workspace
+.vscode/
+
+# Vim swap files
+*.swp
+
+# Mac Desktop Services Store
+.DS_Store
+
+# Cargo build directory
+target/
+
+# Library cargo lock file
+Cargo.lock
+
+# Backup files
+**/*.rs.bk
+
