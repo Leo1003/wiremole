@@ -1,0 +1,13 @@
+[package]
+name = "wirectrl"
+description = "Library to control Wireguard with kernel or userspace implementation"
+version = "0.0.0"
+authors = ["Leo <leo881003@gmail.com>"]
+edition = "2018"
+readme = "../README.md"
+repository = "https://github.com/Leo1003/wiremole"
+license = "Apache-2.0"
+keywords = ["wireguard", "webui"]
+categories = ["network-programming"]
+
+[dependencies]
