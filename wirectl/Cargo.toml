@@ -1,5 +1,5 @@
 [package]
-name = "wirectrl"
+name = "wirectl"
 description = "Library to control Wireguard with kernel or userspace implementation"
 version = "0.0.0"
 authors = ["Leo <leo881003@gmail.com>"]

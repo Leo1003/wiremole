@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "wirectrl",
+    "wirectl",
     "wiremole",
 ]
 
