@@ -8,6 +8,8 @@ This repository is still under development, currently unusable.
 - [ ] Manage wireguard interface
     - Backend
         - [ ] Kernelspace implementation
+            - [ ] Linux
+            - [ ] OpenBSD/FreeBSD
         - [ ] Userspace implementation
         - [ ] Embedding [boringtun](https://github.com/cloudflare/boringtun) library
     - [ ] Admin authentication by specified wireguard IP
