@@ -1,4 +1,4 @@
-use super::Peer;
+use super::{Peer, PeerSettings};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -66,5 +66,76 @@ impl WgDevice {
 
     pub fn has_fwmark(&self) -> bool {
         self.fwmark != 0
+    }
+}
+
+pub struct WgDeviceSettings {
+    devname: String,
+    privkey: Option<StaticSecret>,
+    fwmark: Option<u32>,
+    listen_port: Option<u16>,
+    replace_peers: bool,
+    peers: Vec<PeerSettings>,
+}
+
+impl Debug for WgDeviceSettings {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("WgDeviceSettings")
+            .field("devname", &self.devname)
+            .field("privkey", &"<omitted>")
+            .field("fwmark", &self.fwmark)
+            .field("listen_port", &self.listen_port)
+            .field("replace_peers", &self.replace_peers)
+            .field("peers", &self.peers)
+            .finish()
+    }
+}
+
+impl WgDeviceSettings {
+    pub(crate) fn new(devname: &str) -> Self {
+        WgDeviceSettings {
+            devname: devname.to_owned(),
+            privkey: None,
+            fwmark: None,
+            listen_port: None,
+            replace_peers: false,
+            peers: Vec::new(),
+        }
+    }
+
+    pub fn set_private_key(mut self, private_key: &StaticSecret) -> Self {
+        self.privkey = Some(private_key.clone());
+        self
+    }
+
+    pub fn set_fwmark(mut self, fwmark: u32) -> Self {
+        self.fwmark = Some(fwmark);
+        self
+    }
+
+    pub fn set_listen_port(mut self, listen_port: u16) -> Self {
+        self.listen_port = Some(listen_port);
+        self
+    }
+
+    pub fn set_replace_peers(mut self) -> Self {
+        self.replace_peers = true;
+        self
+    }
+
+    pub fn set_peer(mut self, peer: PeerSettings) -> Self {
+        self.peers.push(peer);
+        self
+    }
+}
+
+impl From<WgDevice> for WgDeviceSettings {
+    fn from(device: WgDevice) -> Self {
+        WgDeviceSettings::new(device.device_name())
+    }
+}
+impl From<&WgDevice> for WgDeviceSettings {
+    fn from(device: &WgDevice) -> Self {
+        WgDeviceSettings::new(device.device_name())
     }
 }
