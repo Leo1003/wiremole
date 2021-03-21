@@ -1,11 +1,9 @@
-use super::PresharedKey;
+use super::{PresharedKey, PublicKey};
 use ipnetwork::IpNetwork;
-use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::net::{IpAddr, SocketAddr};
 use std::time::SystemTime;
-use x25519_dalek::PublicKey;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Peer {
     pubkey: PublicKey,
     preshared: PresharedKey,
@@ -17,27 +15,12 @@ pub struct Peer {
     allow_ips: Vec<IpNetwork>,
 }
 
-impl Debug for Peer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("Peer")
-            .field("pubkey", &self.pubkey)
-            .field("preshared", &"<omitted>")
-            .field("endpoint", &self.endpoint)
-            .field("last_handshake", &self.last_handshake)
-            .field("rx_bytes", &self.rx_bytes)
-            .field("tx_bytes", &self.tx_bytes)
-            .field("persistent_keepalive", &self.persistent_keepalive)
-            .field("allow_ips", &self.allow_ips)
-            .finish()
-    }
-}
-
 impl Peer {
-    pub fn public_key(&self) -> PublicKey {
-        self.pubkey
+    pub fn public_key(&self) -> &PublicKey {
+        &self.pubkey
     }
 
-    pub fn preshared_key(&self) -> Option<&[u8; 32]> {
+    pub fn preshared_key(&self) -> Option<&PresharedKey> {
         if self.has_preshared_key() {
             Some(&self.preshared)
         } else {
@@ -93,11 +76,11 @@ impl Peer {
     }
 
     pub fn has_public_key(&self) -> bool {
-        *self.pubkey.as_bytes() != [0u8; 32]
+        !self.pubkey.is_empty()
     }
 
     pub fn has_preshared_key(&self) -> bool {
-        *self.preshared != [0u8; 32]
+        !self.preshared.is_empty()
     }
 
     pub fn has_persistent_keepalive(&self) -> bool {
@@ -169,6 +152,6 @@ impl From<Peer> for PeerSettings {
 }
 impl From<&Peer> for PeerSettings {
     fn from(peer: &Peer) -> Self {
-        Self::new(peer.pubkey)
+        Self::new(peer.pubkey.clone())
     }
 }

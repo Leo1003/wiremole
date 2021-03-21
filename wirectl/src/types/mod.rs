@@ -1,10 +1,8 @@
 //! Wireguard interface types
-use zeroize::Zeroizing;
-
 mod device;
+mod key;
 mod peer;
 
 pub use device::*;
+pub use key::*;
 pub use peer::*;
-
-pub type PresharedKey = Zeroizing<[u8; 32]>;

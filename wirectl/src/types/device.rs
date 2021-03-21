@@ -1,30 +1,15 @@
 use super::{Peer, PeerSettings};
-use std::fmt::{Debug, Formatter, Result as FmtResult};
-use x25519_dalek::{PublicKey, StaticSecret};
+use super::{PrivateKey, PublicKey};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WgDevice {
     devname: String,
     ifindex: u32,
     pubkey: Option<PublicKey>,
-    privkey: Option<StaticSecret>,
+    privkey: Option<PrivateKey>,
     fwmark: u32,
     listen_port: u16,
     peers: Vec<Peer>,
-}
-
-impl Debug for WgDevice {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("WgDevice")
-            .field("devname", &self.devname)
-            .field("ifindex", &self.ifindex)
-            .field("pubkey", &self.pubkey)
-            .field("privkey", &"<omitted>")
-            .field("fwmark", &self.fwmark)
-            .field("listen_port", &self.listen_port)
-            .field("peers", &self.peers)
-            .finish()
-    }
 }
 
 impl WgDevice {
@@ -32,12 +17,12 @@ impl WgDevice {
         &self.devname
     }
 
-    pub fn public_key(&self) -> Option<PublicKey> {
-        self.pubkey
+    pub fn public_key(&self) -> Option<&PublicKey> {
+        self.pubkey.as_ref()
     }
 
-    pub fn private_key(&self) -> Option<StaticSecret> {
-        self.privkey.clone()
+    pub fn private_key(&self) -> Option<&PrivateKey> {
+        self.privkey.as_ref()
     }
 
     pub fn fwmark(&self) -> u32 {
@@ -69,26 +54,14 @@ impl WgDevice {
     }
 }
 
+#[derive(Debug)]
 pub struct WgDeviceSettings {
     devname: String,
-    privkey: Option<StaticSecret>,
+    privkey: Option<PrivateKey>,
     fwmark: Option<u32>,
     listen_port: Option<u16>,
     replace_peers: bool,
     peers: Vec<PeerSettings>,
-}
-
-impl Debug for WgDeviceSettings {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("WgDeviceSettings")
-            .field("devname", &self.devname)
-            .field("privkey", &"<omitted>")
-            .field("fwmark", &self.fwmark)
-            .field("listen_port", &self.listen_port)
-            .field("replace_peers", &self.replace_peers)
-            .field("peers", &self.peers)
-            .finish()
-    }
 }
 
 impl WgDeviceSettings {
@@ -103,8 +76,8 @@ impl WgDeviceSettings {
         }
     }
 
-    pub fn set_private_key(mut self, private_key: &StaticSecret) -> Self {
-        self.privkey = Some(private_key.clone());
+    pub fn set_private_key(mut self, private_key: PrivateKey) -> Self {
+        self.privkey = Some(private_key);
         self
     }
 
