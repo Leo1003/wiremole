@@ -8,4 +8,6 @@ pub enum WireCtlError {
     HexDecode(#[from] hex::FromHexError),
     #[error("Invalid key length")]
     InvalidKeyLength,
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
 }

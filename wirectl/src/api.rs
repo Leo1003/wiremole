@@ -9,5 +9,3 @@ pub enum WgApi {
     #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
     BSD,
 }
-
-
