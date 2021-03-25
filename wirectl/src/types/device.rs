@@ -3,16 +3,28 @@ use super::{PrivateKey, PublicKey};
 
 #[derive(Clone, Debug)]
 pub struct WgDevice {
-    devname: String,
-    ifindex: u32,
-    pubkey: Option<PublicKey>,
-    privkey: Option<PrivateKey>,
-    fwmark: u32,
-    listen_port: u16,
-    peers: Vec<Peer>,
+    pub(crate) devname: String,
+    pub(crate) ifindex: u32,
+    pub(crate) pubkey: Option<PublicKey>,
+    pub(crate) privkey: Option<PrivateKey>,
+    pub(crate) fwmark: u32,
+    pub(crate) listen_port: u16,
+    pub(crate) peers: Vec<Peer>,
 }
 
 impl WgDevice {
+    pub(crate) fn new(devname: &str) -> Self {
+        Self {
+            devname: devname.to_owned(),
+            ifindex: 0,
+            pubkey: None,
+            privkey: None,
+            fwmark: 0,
+            listen_port: 0,
+            peers: Vec::new(),
+        }
+    }
+
     pub fn device_name(&self) -> &str {
         &self.devname
     }

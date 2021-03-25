@@ -10,4 +10,8 @@ pub enum WireCtlError {
     InvalidKeyLength,
     #[error("{0}")]
     Io(#[from] std::io::Error),
+    #[error("Invalid protocol")]
+    InvalidProtocol,
+    #[error("Device Error: {0}")]
+    DeviceError(i32),
 }

@@ -5,14 +5,14 @@ use std::time::SystemTime;
 
 #[derive(Clone, Debug)]
 pub struct Peer {
-    pubkey: PublicKey,
-    preshared: PresharedKey,
-    endpoint: SocketAddr,
-    last_handshake: SystemTime,
-    rx_bytes: u64,
-    tx_bytes: u64,
-    persistent_keepalive: u16,
-    allow_ips: Vec<IpNetwork>,
+    pub(crate) pubkey: PublicKey,
+    pub(crate) preshared: PresharedKey,
+    pub(crate) endpoint: SocketAddr,
+    pub(crate) last_handshake: SystemTime,
+    pub(crate) rx_bytes: u64,
+    pub(crate) tx_bytes: u64,
+    pub(crate) persistent_keepalive: u16,
+    pub(crate) allow_ips: Vec<IpNetwork>,
 }
 
 impl Peer {

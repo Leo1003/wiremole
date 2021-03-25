@@ -4,9 +4,13 @@
 //! It communicates with programs such as `wireguard-go` by unix domain socket.
 //!
 //! For more detail protocol definition, read the [documentation](https://www.wireguard.com/xplatform/) by wireguard.
-use crate::WireCtlError;
+use crate::{
+    types::{PresharedKey, PrivateKey, PublicKey, WgDevice},
+    WireCtlError,
+};
 use async_fs::{read_dir, remove_file};
 use async_net::unix::UnixStream;
+use futures::io::BufReader;
 use futures::prelude::*;
 use std::path::PathBuf;
 use std::{ffi::OsStr, os::unix::fs::FileTypeExt};
@@ -15,7 +19,7 @@ use std::{io::ErrorKind, str::FromStr};
 pub const WG_SOCKET_PATH: &str = "/var/run/wireguard";
 pub const WG_SOCKET_SUFFIX: &str = "sock";
 
-pub async fn get_interfaces() -> Result<Vec<String>, WireCtlError> {
+pub async fn list_devices() -> Result<Vec<String>, WireCtlError> {
     let mut sockdir = match read_dir(WG_SOCKET_PATH).await {
         Ok(data) => data,
         Err(e) => {
@@ -36,7 +40,7 @@ pub async fn get_interfaces() -> Result<Vec<String>, WireCtlError> {
             }
 
             let ifname = sockname.file_stem().unwrap();
-            if check_interface(ifname).await {
+            if check_device(ifname).await {
                 interfaces.push(ifname.to_string_lossy().into_owned());
             }
         }
@@ -45,7 +49,7 @@ pub async fn get_interfaces() -> Result<Vec<String>, WireCtlError> {
     Ok(interfaces)
 }
 
-async fn open_interface<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStream, WireCtlError> {
+async fn open_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStream, WireCtlError> {
     let mut socket_path = PathBuf::from_str(WG_SOCKET_PATH).unwrap();
     socket_path.push(ifname.as_ref());
     socket_path.set_extension(WG_SOCKET_SUFFIX);
@@ -65,7 +69,52 @@ async fn open_interface<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStre
     Ok(socket)
 }
 
-async fn check_interface<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
-    let rslt = open_interface(ifname).await;
+async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
+    let rslt = open_device(ifname).await;
     rslt.is_ok()
+}
+
+pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
+    let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
+
+    let mut device = WgDevice::new(ifname);
+    ctrl_sock.write_all(b"get=1\n\n").await?;
+
+    let mut buf = String::with_capacity(1024);
+    loop {
+        ctrl_sock.read_line(&mut buf).await?;
+        let line = buf.trim_end();
+        if line.is_empty() {
+            break;
+        }
+
+        let (key, value) = line
+            .split_once('=') // NOTE: split_once() stabilize at 1.52.0
+            .ok_or(WireCtlError::InvalidProtocol)?;
+
+        match key {
+            "private_key" => {
+                let privkey = PrivateKey::from_hex(value)?;
+                device.pubkey = Some(PublicKey::from(&privkey));
+                device.privkey = Some(privkey);
+            }
+            "listen_port" => {
+                device.listen_port = value.parse().map_err(|_| WireCtlError::InvalidProtocol)?;
+            }
+            "fwmark" => device.fwmark = value.parse().map_err(|_| WireCtlError::InvalidProtocol)?,
+            "public_key" => {
+                let pubkey = PublicKey::from_hex(value)?;
+                // TODO
+            },
+            "errno" => {
+                let errno: i32 = value.parse().map_err(|_| WireCtlError::InvalidProtocol)?;
+                if errno != 0 {
+                    return Err(WireCtlError::DeviceError(errno));
+                }
+            },
+            _ => return Err(WireCtlError::InvalidProtocol),
+        }
+    }
+
+    Ok(device)
 }
