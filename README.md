@@ -1,4 +1,5 @@
 # Wiremole
+![minimum rustc version](https://img.shields.io/badge/rustc-1.52+-blue.svg)
 A Wireguard web interface aims to provide intuitive user interface and a ease to use REST API allowing to dynamically control clients.
 
 ## Project Status

@@ -88,9 +88,7 @@ pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
             break;
         }
 
-        let (key, value) = line
-            .split_once('=') // NOTE: split_once() stabilize at 1.52.0
-            .ok_or(WireCtlError::InvalidProtocol)?;
+        let (key, value) = line.split_once('=').ok_or(WireCtlError::InvalidProtocol)?;
 
         match key {
             "private_key" => {
@@ -105,13 +103,13 @@ pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
             "public_key" => {
                 let pubkey = PublicKey::from_hex(value)?;
                 // TODO
-            },
+            }
             "errno" => {
                 let errno: i32 = value.parse().map_err(|_| WireCtlError::InvalidProtocol)?;
                 if errno != 0 {
                     return Err(WireCtlError::DeviceError(errno));
                 }
-            },
+            }
             _ => return Err(WireCtlError::InvalidProtocol),
         }
     }

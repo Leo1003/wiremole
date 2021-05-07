@@ -1,5 +1,5 @@
-use crate::WireCtlError;
 use crate::ipc;
+use crate::WireCtlError;
 
 /// Used by [`crate::interface::WgInterface`] to determine which underlaying API to use
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
