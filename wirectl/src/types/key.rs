@@ -78,9 +78,9 @@ impl From<[u8; 32]> for PublicKey {
     }
 }
 
-impl Into<[u8; 32]> for PublicKey {
-    fn into(self) -> [u8; 32] {
-        self.0.to_bytes()
+impl From<PublicKey> for [u8; 32] {
+    fn from(pubkey: PublicKey) -> Self {
+        pubkey.0.to_bytes()
     }
 }
 
@@ -130,9 +130,9 @@ impl From<[u8; 32]> for PrivateKey {
     }
 }
 
-impl Into<[u8; 32]> for PrivateKey {
-    fn into(self) -> [u8; 32] {
-        self.0.to_bytes()
+impl From<PrivateKey> for [u8; 32] {
+    fn from(privkey: PrivateKey) -> Self {
+        privkey.0.to_bytes()
     }
 }
 
@@ -186,8 +186,8 @@ impl From<[u8; 32]> for PresharedKey {
     }
 }
 
-impl Into<[u8; 32]> for PresharedKey {
-    fn into(self) -> [u8; 32] {
-        self.0
+impl From<PresharedKey> for [u8; 32] {
+    fn from(key: PresharedKey) -> Self {
+        key.0
     }
 }
