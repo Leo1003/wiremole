@@ -5,16 +5,16 @@
 //!
 //! For more detail protocol definition, read the [documentation](https://www.wireguard.com/xplatform/) by wireguard.
 use crate::{
-    types::{PresharedKey, PrivateKey, PublicKey, WgDevice},
+    types::{Peer, PresharedKey, PrivateKey, PublicKey, WgDevice},
     WireCtlError,
 };
 use async_fs::{read_dir, remove_file};
 use async_net::unix::UnixStream;
 use futures::io::BufReader;
 use futures::prelude::*;
-use std::path::PathBuf;
-use std::{ffi::OsStr, os::unix::fs::FileTypeExt};
+use std::{ffi::OsStr, os::unix::fs::FileTypeExt, time::SystemTime};
 use std::{io::ErrorKind, str::FromStr};
+use std::{path::PathBuf, time::Duration};
 
 pub const WG_SOCKET_PATH: &str = "/var/run/wireguard";
 pub const WG_SOCKET_SUFFIX: &str = "sock";
@@ -77,17 +77,18 @@ async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
 pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
     let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
 
+    let mut errno = None;
     let mut device = WgDevice::new(ifname);
     ctrl_sock.write_all(b"get=1\n\n").await?;
 
-    let mut buf = String::with_capacity(1024);
+    let mut curr_line = String::with_capacity(1024);
+    ctrl_sock.read_line(&mut curr_line).await?;
+
     loop {
-        ctrl_sock.read_line(&mut buf).await?;
-        let line = buf.trim_end();
+        let line = curr_line.trim_end();
         if line.is_empty() {
             break;
         }
-
         let (key, value) = line.split_once('=').ok_or(WireCtlError::InvalidProtocol)?;
 
         match key {
@@ -97,22 +98,95 @@ pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
                 device.privkey = Some(privkey);
             }
             "listen_port" => {
-                device.listen_port = value.parse().map_err(|_| WireCtlError::InvalidProtocol)?;
+                device.listen_port = value.parse()?;
             }
-            "fwmark" => device.fwmark = value.parse().map_err(|_| WireCtlError::InvalidProtocol)?,
+            "fwmark" => device.fwmark = value.parse()?,
             "public_key" => {
                 let pubkey = PublicKey::from_hex(value)?;
-                // TODO
+                let peer = read_peer_info(&mut ctrl_sock, &mut curr_line, pubkey).await?;
+                device.peers.push(peer);
+
+                // The next line has already been read into `curr_line` by `read_peer_info()`
+                continue;
             }
             "errno" => {
-                let errno: i32 = value.parse().map_err(|_| WireCtlError::InvalidProtocol)?;
-                if errno != 0 {
-                    return Err(WireCtlError::DeviceError(errno));
+                if errno.is_some() {
+                    // errno is alreadys set
+                    return Err(WireCtlError::InvalidProtocol);
+                } else {
+                    errno = Some(value.parse::<i32>()?);
                 }
             }
             _ => return Err(WireCtlError::InvalidProtocol),
         }
+
+        // Read next line
+        ctrl_sock.read_line(&mut curr_line).await?;
     }
 
-    Ok(device)
+    if let Some(errno) = errno {
+        if errno == 0 {
+            Ok(device)
+        } else {
+            Err(WireCtlError::DeviceError(errno))
+        }
+    } else {
+        // If the peer doesn't send errno, treat as invalid protocol
+        Err(WireCtlError::InvalidProtocol)
+    }
+}
+
+async fn read_peer_info<S>(
+    ctrl_sock: &mut S,
+    curr_line: &mut String,
+    pubkey: PublicKey,
+) -> Result<Peer, WireCtlError>
+where
+    S: AsyncBufRead + AsyncRead + Unpin + ?Sized,
+{
+    let mut peer = Peer::new(pubkey);
+    let mut last_handshake_s = Duration::default();
+    let mut last_handshake_ns = Duration::default();
+
+    loop {
+        let line = curr_line.trim_end();
+        if line.is_empty() {
+            break;
+        }
+        let (key, value) = line.split_once('=').ok_or(WireCtlError::InvalidProtocol)?;
+
+        match key {
+            "preshared_key" => peer.preshared = PresharedKey::from_hex(value)?,
+            "allowed_ip" => {
+                let allowed_ip = value.parse()?;
+                peer.allow_ips.push(allowed_ip);
+            }
+            "endpoint" => {
+                peer.endpoint = value.parse()?;
+            }
+            "tx_bytes" => {
+                peer.tx_bytes = value.parse()?;
+            }
+            "rx_bytes" => {
+                peer.rx_bytes = value.parse()?;
+            }
+            "persistent_keepalive_interval" => {
+                peer.persistent_keepalive = value.parse()?;
+            }
+            "last_handshake_time_sec" => {
+                last_handshake_s = Duration::from_secs(value.parse()?);
+            }
+            "last_handshake_time_nsec" => {
+                last_handshake_ns = Duration::from_nanos(value.parse()?);
+            }
+            "protocol_version" => (), // Currently, we don't care the protocol_version
+            _ => break,
+        }
+
+        // Read next line
+        ctrl_sock.read_line(curr_line).await?;
+    }
+
+    peer.last_handshake = SystemTime::UNIX_EPOCH + last_handshake_s + last_handshake_ns;
+    Ok(peer)
 }

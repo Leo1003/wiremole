@@ -1,5 +1,6 @@
 use super::{PresharedKey, PublicKey};
 use ipnetwork::IpNetwork;
+use std::net::Ipv4Addr;
 use std::net::{IpAddr, SocketAddr};
 use std::time::SystemTime;
 
@@ -16,6 +17,19 @@ pub struct Peer {
 }
 
 impl Peer {
+    pub(crate) fn new(pubkey: PublicKey) -> Self {
+        Self {
+            pubkey,
+            preshared: PresharedKey::default(),
+            endpoint: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
+            last_handshake: SystemTime::UNIX_EPOCH,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            persistent_keepalive: 0,
+            allow_ips: Vec::new(),
+        }
+    }
+
     pub fn public_key(&self) -> &PublicKey {
         &self.pubkey
     }

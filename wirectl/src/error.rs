@@ -1,3 +1,7 @@
+use std::num::ParseIntError;
+
+use std::net::AddrParseError;
+use ipnetwork::IpNetworkError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -14,4 +18,22 @@ pub enum WireCtlError {
     InvalidProtocol,
     #[error("Device Error: {0}")]
     DeviceError(i32),
+}
+
+impl From<ParseIntError> for WireCtlError {
+    fn from(_: ParseIntError) -> Self {
+        Self::InvalidProtocol
+    }
+}
+
+impl From<AddrParseError> for WireCtlError {
+    fn from(_: AddrParseError) -> Self {
+        Self::InvalidProtocol
+    }
+}
+
+impl From<IpNetworkError> for WireCtlError {
+    fn from(_: IpNetworkError) -> Self {
+        Self::InvalidProtocol
+    }
 }
