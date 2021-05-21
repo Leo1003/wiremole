@@ -76,10 +76,17 @@ async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
 
 pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
     let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
+    ctrl_sock.write_all(b"get=1\n\n").await?;
 
+    read_device_info(&mut ctrl_sock, ifname).await
+}
+
+async fn read_device_info<S>(ctrl_sock: &mut S, ifname: &str) -> Result<WgDevice, WireCtlError>
+where
+    S: AsyncBufRead + AsyncRead + Unpin + ?Sized,
+{
     let mut errno = None;
     let mut device = WgDevice::new(ifname);
-    ctrl_sock.write_all(b"get=1\n\n").await?;
 
     let mut curr_line = String::with_capacity(1024);
     ctrl_sock.read_line(&mut curr_line).await?;
@@ -103,7 +110,7 @@ pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
             "fwmark" => device.fwmark = value.parse()?,
             "public_key" => {
                 let pubkey = PublicKey::from_hex(value)?;
-                let peer = read_peer_info(&mut ctrl_sock, &mut curr_line, pubkey).await?;
+                let peer = read_peer_info(ctrl_sock, &mut curr_line, pubkey).await?;
                 device.peers.push(peer);
 
                 // The next line has already been read into `curr_line` by `read_peer_info()`
@@ -190,3 +197,6 @@ where
     peer.last_handshake = SystemTime::UNIX_EPOCH + last_handshake_s + last_handshake_ns;
     Ok(peer)
 }
+
+#[cfg(test)]
+mod tests;
