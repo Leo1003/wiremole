@@ -128,6 +128,7 @@ where
         }
 
         // Read next line
+        curr_line.clear();
         ctrl_sock.read_line(&mut curr_line).await?;
     }
 
@@ -154,6 +155,10 @@ where
     let mut peer = Peer::new(pubkey);
     let mut last_handshake_s = Duration::default();
     let mut last_handshake_ns = Duration::default();
+
+    // Read next line
+    curr_line.clear();
+    ctrl_sock.read_line(curr_line).await?;
 
     loop {
         let line = curr_line.trim_end();
@@ -191,6 +196,7 @@ where
         }
 
         // Read next line
+        curr_line.clear();
         ctrl_sock.read_line(curr_line).await?;
     }
 
