@@ -16,6 +16,8 @@ pub enum WireCtlError {
     Io(#[from] std::io::Error),
     #[error("Invalid protocol")]
     InvalidProtocol,
+    #[error("Invalid configuration")]
+    InvalidConfig,
     #[error("Device Error: {0}")]
     DeviceError(i32),
 }

@@ -16,7 +16,7 @@ use std::{path::PathBuf, time::Duration};
 pub const WG_SOCKET_PATH: &str = "/var/run/wireguard";
 pub const WG_SOCKET_SUFFIX: &str = "sock";
 
-pub async fn list_devices() -> Result<Vec<String>, WireCtlError> {
+pub async fn list_interfaces() -> Result<Vec<String>, WireCtlError> {
     let mut sockdir = match read_dir(WG_SOCKET_PATH).await {
         Ok(data) => data,
         Err(e) => {
@@ -71,14 +71,14 @@ async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
     rslt.is_ok()
 }
 
-pub async fn get_device(ifname: &str) -> Result<WgDevice, WireCtlError> {
+pub async fn get_config(ifname: &str) -> Result<WgDevice, WireCtlError> {
     let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
     ctrl_sock.write_all(b"get=1\n\n").await?;
 
-    read_device_info(&mut ctrl_sock, ifname).await
+    parse_device_config(&mut ctrl_sock, ifname).await
 }
 
-async fn read_device_info<S>(ctrl_sock: &mut S, ifname: &str) -> Result<WgDevice, WireCtlError>
+async fn parse_device_config<S>(ctrl_sock: &mut S, ifname: &str) -> Result<WgDevice, WireCtlError>
 where
     S: AsyncBufRead + AsyncRead + Unpin + ?Sized,
 {
@@ -107,7 +107,7 @@ where
             "fwmark" => device.fwmark = value.parse()?,
             "public_key" => {
                 let pubkey = PublicKey::from_hex(value)?;
-                let peer = read_peer_info(ctrl_sock, &mut curr_line, pubkey).await?;
+                let peer = parse_peer_config(ctrl_sock, &mut curr_line, pubkey).await?;
                 device.peers.push(peer);
 
                 // The next line has already been read into `curr_line` by `read_peer_info()`
@@ -141,7 +141,7 @@ where
     }
 }
 
-async fn read_peer_info<S>(
+async fn parse_peer_config<S>(
     ctrl_sock: &mut S,
     curr_line: &mut String,
     pubkey: PublicKey,
@@ -212,10 +212,10 @@ where
     Ok(())
 }
 
-pub async fn set_device(ifname: &str, conf: WgDeviceSettings) -> Result<(), WireCtlError> {
+pub async fn set_config(ifname: &str, conf: WgDeviceSettings) -> Result<(), WireCtlError> {
     let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
 
-    write_device_config(&mut ctrl_sock, conf).await?;
+    emit_device_config(&mut ctrl_sock, conf).await?;
     ctrl_sock.flush().await?;
 
     let mut curr_line = String::new();
@@ -247,7 +247,7 @@ pub async fn set_device(ifname: &str, conf: WgDeviceSettings) -> Result<(), Wire
     }
 }
 
-async fn write_device_config<S>(
+async fn emit_device_config<S>(
     ctrl_sock: &mut S,
     conf: WgDeviceSettings,
 ) -> Result<(), WireCtlError>
@@ -271,7 +271,7 @@ where
         write_fmt(ctrl_sock, format_args!("replace_peers=true\n")).await?;
     }
     for peer in conf.peers {
-        write_peer_config(ctrl_sock, peer).await?;
+        emit_peer_config(ctrl_sock, peer).await?;
     }
     // End with empty line
     write_fmt(ctrl_sock, format_args!("\n")).await?;
@@ -279,7 +279,7 @@ where
     Ok(())
 }
 
-async fn write_peer_config<S>(ctrl_sock: &mut S, conf: PeerSettings) -> Result<(), WireCtlError>
+async fn emit_peer_config<S>(ctrl_sock: &mut S, conf: PeerSettings) -> Result<(), WireCtlError>
 where
     S: AsyncWrite + Unpin + ?Sized,
 {
