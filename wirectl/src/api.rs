@@ -1,5 +1,5 @@
-use crate::{ipc, types::WgDevice};
 use crate::WireCtlError;
+use crate::{ipc, types::*};
 
 cfg_if! {
     if #[cfg(target_os = "linux")] {
@@ -43,9 +43,9 @@ impl WgApi {
         }
     }
 
-    pub(crate) async fn set_device(self) -> Result<Vec<String>, WireCtlError> {
+    pub(crate) async fn set_device(self, ifname: &str, conf: WgDeviceSettings) -> Result<(), WireCtlError> {
         match self {
-            WgApi::IPC => todo!(),
+            WgApi::IPC => ipc::set_device(ifname, conf).await,
             #[cfg(target_os = "linux")]
             WgApi::Linux => todo!(),
             #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]

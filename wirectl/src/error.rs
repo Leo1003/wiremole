@@ -1,7 +1,7 @@
 use std::num::ParseIntError;
 
-use std::net::AddrParseError;
 use ipnetwork::IpNetworkError;
+use std::net::AddrParseError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

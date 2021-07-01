@@ -104,14 +104,14 @@ impl Peer {
 
 #[derive(Debug)]
 pub struct PeerSettings {
-    pubkey: PublicKey,
-    preshared_key: Option<PresharedKey>,
-    endpoint: Option<SocketAddr>,
-    persistent_keepalive: Option<u16>,
-    replace_allowed_ips: bool,
-    allowed_ips: Vec<IpNetwork>,
-    update_only: bool,
-    remove: bool,
+    pub(crate) pubkey: PublicKey,
+    pub(crate) preshared_key: Option<PresharedKey>,
+    pub(crate) endpoint: Option<SocketAddr>,
+    pub(crate) persistent_keepalive: Option<u16>,
+    pub(crate) replace_allowed_ips: bool,
+    pub(crate) allowed_ips: Vec<IpNetwork>,
+    pub(crate) update_only: bool,
+    pub(crate) remove: bool,
 }
 
 impl PeerSettings {

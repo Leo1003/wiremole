@@ -4,16 +4,13 @@
 //! It communicates with programs such as `wireguard-go` by unix domain socket.
 //!
 //! For more detail protocol definition, read the [documentation](https://www.wireguard.com/xplatform/) by wireguard.
-use crate::{
-    types::{Peer, PresharedKey, PrivateKey, PublicKey, WgDevice},
-    WireCtlError,
-};
+use crate::{types::*, WireCtlError};
 use async_fs::{read_dir, remove_file};
 use async_net::unix::UnixStream;
 use futures::io::BufReader;
 use futures::prelude::*;
-use std::{ffi::OsStr, os::unix::fs::FileTypeExt, time::SystemTime};
-use std::{io::ErrorKind, str::FromStr};
+use std::{ffi::OsStr, fmt::Arguments, os::unix::fs::FileTypeExt, time::SystemTime};
+use std::{io::ErrorKind, io::Write as _, str::FromStr};
 use std::{path::PathBuf, time::Duration};
 
 pub const WG_SOCKET_PATH: &str = "/var/run/wireguard";
@@ -202,6 +199,127 @@ where
 
     peer.last_handshake = SystemTime::UNIX_EPOCH + last_handshake_s + last_handshake_ns;
     Ok(peer)
+}
+
+async fn write_fmt<S>(ctrl_sock: &mut S, args: Arguments<'_>) -> Result<(), WireCtlError>
+where
+    S: AsyncWrite + Unpin + ?Sized,
+{
+    let mut buf = Vec::new();
+    write!(&mut buf, "{}", args)
+        .map_err(|_| WireCtlError::Io(std::io::Error::new(ErrorKind::Other, "formatter error")))?;
+    ctrl_sock.write_all(buf.as_slice()).await?;
+    Ok(())
+}
+
+pub async fn set_device(ifname: &str, conf: WgDeviceSettings) -> Result<(), WireCtlError> {
+    let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
+
+    write_device_config(&mut ctrl_sock, conf).await?;
+    ctrl_sock.flush().await?;
+
+    let mut curr_line = String::new();
+
+    // Read return errno
+    // Format:
+    // `errno=0`
+    ctrl_sock.read_line(&mut curr_line).await?;
+    let line = curr_line.trim_end();
+    let (key, value) = line.split_once('=').ok_or(WireCtlError::InvalidProtocol)?;
+    let errno = if key == "errno" {
+        value.parse::<i32>()?
+    } else {
+        return Err(WireCtlError::InvalidProtocol);
+    };
+
+    // Next line should be empty
+    curr_line.clear();
+    ctrl_sock.read_line(&mut curr_line).await?;
+    let line = curr_line.trim_end();
+    if !line.is_empty() {
+        return Err(WireCtlError::InvalidProtocol);
+    }
+
+    if errno == 0 {
+        Ok(())
+    } else {
+        Err(WireCtlError::DeviceError(errno))
+    }
+}
+
+async fn write_device_config<S>(
+    ctrl_sock: &mut S,
+    conf: WgDeviceSettings,
+) -> Result<(), WireCtlError>
+where
+    S: AsyncWrite + Unpin + ?Sized,
+{
+    if let Some(privkey) = conf.privkey {
+        write_fmt(
+            ctrl_sock,
+            format_args!("private_key={}\n", privkey.to_hex()),
+        )
+        .await?;
+    }
+    if let Some(fwmark) = conf.fwmark {
+        write_fmt(ctrl_sock, format_args!("fwmark={}\n", fwmark)).await?;
+    }
+    if let Some(listen_port) = conf.listen_port {
+        write_fmt(ctrl_sock, format_args!("listen_port={}\n", listen_port)).await?;
+    }
+    if conf.replace_peers {
+        write_fmt(ctrl_sock, format_args!("replace_peers=true\n")).await?;
+    }
+    for peer in conf.peers {
+        write_peer_config(ctrl_sock, peer).await?;
+    }
+    // End with empty line
+    write_fmt(ctrl_sock, format_args!("\n")).await?;
+
+    Ok(())
+}
+
+async fn write_peer_config<S>(ctrl_sock: &mut S, conf: PeerSettings) -> Result<(), WireCtlError>
+where
+    S: AsyncWrite + Unpin + ?Sized,
+{
+    write_fmt(
+        ctrl_sock,
+        format_args!("public_key={}\n", conf.pubkey.to_hex()),
+    )
+    .await?;
+    if conf.remove {
+        write_fmt(ctrl_sock, format_args!("remove=true\n")).await?;
+        return Ok(());
+    }
+    if conf.update_only {
+        write_fmt(ctrl_sock, format_args!("update_only=true\n")).await?;
+    }
+    if let Some(preshared_key) = conf.preshared_key {
+        write_fmt(
+            ctrl_sock,
+            format_args!("preshared_key={}\n", preshared_key.to_hex()),
+        )
+        .await?;
+    }
+    if let Some(endpoint) = conf.endpoint {
+        write_fmt(ctrl_sock, format_args!("endpoint={}\n", endpoint)).await?;
+    }
+    if let Some(keepalive) = conf.persistent_keepalive {
+        write_fmt(
+            ctrl_sock,
+            format_args!("persistent_keepalive_interval={}\n", keepalive),
+        )
+        .await?;
+    }
+    if conf.replace_allowed_ips {
+        write_fmt(ctrl_sock, format_args!("replace_allowed_ips=true\n")).await?;
+    }
+    for allowed_ip in conf.allowed_ips {
+        write_fmt(ctrl_sock, format_args!("allowed_ip={}\n", allowed_ip)).await?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

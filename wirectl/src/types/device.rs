@@ -68,12 +68,12 @@ impl WgDevice {
 
 #[derive(Debug)]
 pub struct WgDeviceSettings {
-    devname: String,
-    privkey: Option<PrivateKey>,
-    fwmark: Option<u32>,
-    listen_port: Option<u16>,
-    replace_peers: bool,
-    peers: Vec<PeerSettings>,
+    pub(crate) devname: String,
+    pub(crate) privkey: Option<PrivateKey>,
+    pub(crate) fwmark: Option<u32>,
+    pub(crate) listen_port: Option<u16>,
+    pub(crate) replace_peers: bool,
+    pub(crate) peers: Vec<PeerSettings>,
 }
 
 impl WgDeviceSettings {

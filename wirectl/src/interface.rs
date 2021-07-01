@@ -1,4 +1,5 @@
 //! Types related to Wireguard devices
+use crate::types::*;
 use futures::{StreamExt, TryFutureExt, TryStreamExt};
 
 use crate::{
@@ -15,11 +16,13 @@ pub struct WgInterface {
 impl WgInterface {
     pub async fn get_interfaces() -> Result<Vec<WgInterface>, WireCtlError> {
         futures::stream::iter(AVAILABLE_WG_APIS.iter().copied())
-            .then(|api| api.list_devices().map_ok(move |l| {
-                l.into_iter()
-                    .map(|ifname| WgInterface { ifname, wgapi: api })
-                    .collect()
-            }))
+            .then(|api| {
+                api.list_devices().map_ok(move |l| {
+                    l.into_iter()
+                        .map(|ifname| WgInterface { ifname, wgapi: api })
+                        .collect()
+                })
+            })
             .try_concat()
             .await
     }
@@ -29,5 +32,9 @@ impl WgInterface {
             .then(|api| api.list_devices())
             .try_concat()
             .await
+    }
+
+    pub async fn get_config(&self) -> Result<WgDevice, WireCtlError> {
+        self.wgapi.get_device(&self.ifname).await
     }
 }
