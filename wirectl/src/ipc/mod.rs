@@ -254,6 +254,8 @@ async fn emit_device_config<S>(
 where
     S: AsyncWrite + Unpin + ?Sized,
 {
+    write_fmt(ctrl_sock,format_args!("set=1\n")).await?;
+
     if let Some(privkey) = conf.privkey {
         write_fmt(
             ctrl_sock,
