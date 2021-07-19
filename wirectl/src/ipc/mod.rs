@@ -7,14 +7,54 @@
 use crate::{types::*, WireCtlError};
 use async_fs::{read_dir, remove_file};
 use async_net::unix::UnixStream;
+use async_process::Command;
 use futures::io::BufReader;
 use futures::prelude::*;
-use std::{ffi::OsStr, fmt::Arguments, os::unix::fs::FileTypeExt, time::SystemTime};
-use std::{io::ErrorKind, io::Write as _, str::FromStr};
-use std::{path::PathBuf, time::Duration};
+use once_cell::sync::Lazy;
+use std::{
+    borrow::Cow,
+    env,
+    ffi::OsStr,
+    fmt::Arguments,
+    io::{ErrorKind, Write as _},
+    os::unix::fs::FileTypeExt,
+    path::PathBuf,
+    str::FromStr,
+    time::Duration,
+    time::SystemTime,
+};
 
 pub const WG_SOCKET_PATH: &str = "/var/run/wireguard";
 pub const WG_SOCKET_SUFFIX: &str = "sock";
+pub const DEFAULT_WG_USERSPACE_IMPL: &str = "wireguard-go";
+
+static WG_USERSPACE_EXEC: Lazy<Cow<OsStr>> = Lazy::new(|| {
+    let exec = env::var_os("WG_USERSPACE_IMPLEMENTATION")
+        .or_else(|| env::var_os("WG_QUICK_USERSPACE_IMPLEMENTATION"))
+        .map_or_else(
+            || OsStr::new(DEFAULT_WG_USERSPACE_IMPL).into(),
+            |s| s.into(),
+        );
+
+    debug!("Using {:?} as userspace Wireguard implementation", &exec);
+
+    exec
+});
+
+pub async fn create_interface(ifname: &str) -> Result<(), WireCtlError> {
+    let program: &OsStr = WG_USERSPACE_EXEC.as_ref();
+    let status = Command::new(program)
+        .arg(ifname)
+        .env_clear()
+        .status()
+        .await?;
+
+    if !status.success() {
+        return Err(WireCtlError::UserspaceLaunch(status));
+    }
+
+    Ok(())
+}
 
 pub async fn list_interfaces() -> Result<Vec<String>, WireCtlError> {
     let mut sockdir = match read_dir(WG_SOCKET_PATH).await {
@@ -66,7 +106,7 @@ async fn open_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStream,
     Ok(socket)
 }
 
-async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
+pub async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
     let rslt = open_device(ifname).await;
     rslt.is_ok()
 }
@@ -254,7 +294,7 @@ async fn emit_device_config<S>(
 where
     S: AsyncWrite + Unpin + ?Sized,
 {
-    write_fmt(ctrl_sock,format_args!("set=1\n")).await?;
+    write_fmt(ctrl_sock, format_args!("set=1\n")).await?;
 
     if let Some(privkey) = conf.privkey {
         write_fmt(

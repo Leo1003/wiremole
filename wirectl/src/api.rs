@@ -1,5 +1,7 @@
 use crate::WireCtlError;
 use crate::{ipc, types::*};
+use futures::TryStreamExt;
+use rtnetlink::new_connection;
 
 cfg_if! {
     if #[cfg(target_os = "linux")] {
@@ -55,5 +57,44 @@ impl WgApi {
             #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
             WgApi::BSD => todo!(),
         }
+    }
+
+    pub(crate) async fn add_interface(self, ifname: &str) -> Result<(), WireCtlError> {
+        match self {
+            WgApi::IPC => ipc::create_interface(ifname).await,
+            #[cfg(target_os = "linux")]
+            WgApi::Linux => todo!(),
+            #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
+            WgApi::BSD => todo!(),
+        }
+    }
+
+    pub(crate) async fn del_interface(self, ifname: &str) -> Result<(), WireCtlError> {
+        let is_wg_if = match self {
+            WgApi::IPC => ipc::check_device(ifname).await,
+            #[cfg(target_os = "linux")]
+            WgApi::Linux => todo!(),
+            #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
+            WgApi::BSD => todo!(),
+        };
+        if !is_wg_if {
+            return Err(WireCtlError::NotFound);
+        }
+
+        let (connection, handle, _) = new_connection()?;
+        smol::spawn(connection).detach();
+
+        let mut links = handle
+            .link()
+            .get()
+            .set_name_filter(ifname.to_owned())
+            .execute();
+
+        if let Some(msg) = links.try_next().await? {
+            handle.link().del(msg.header.index).execute().await?;
+        } else {
+            return Err(WireCtlError::NotFound);
+        }
+        Ok(())
     }
 }

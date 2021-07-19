@@ -24,3 +24,10 @@ async-fs = "1.5.0"
 async-net = "1.5.0"
 futures = "0.3.13"
 cfg-if = "1.0.0"
+rtnetlink = { version = "0.8.0", default-features = false, features = ["smol_socket"]}
+async-process = "1.1.0"
+once_cell = "1.8.0"
+smol = "1.2.5"
+
+[dev-dependencies]
+rand = "0.8.4"

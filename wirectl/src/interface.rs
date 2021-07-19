@@ -7,13 +7,29 @@ use crate::{
     WireCtlError,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WgInterface {
     ifname: String,
     wgapi: WgApi,
 }
 
 impl WgInterface {
+    pub async fn create_interface(ifname: &str) -> Result<WgInterface, WireCtlError> {
+        Self::create_interface_with(AVAILABLE_WG_APIS[0], ifname).await
+    }
+
+    pub async fn create_interface_with(
+        api: WgApi,
+        ifname: &str,
+    ) -> Result<WgInterface, WireCtlError> {
+        api.add_interface(ifname).await?;
+
+        Ok(WgInterface {
+            ifname: ifname.to_owned(),
+            wgapi: api,
+        })
+    }
+
     pub async fn get_interfaces() -> Result<Vec<WgInterface>, WireCtlError> {
         futures::stream::iter(AVAILABLE_WG_APIS.iter().copied())
             .then(|api| {
@@ -43,5 +59,17 @@ impl WgInterface {
             return Err(WireCtlError::InvalidConfig);
         }
         self.wgapi.set_config(&self.ifname, conf).await
+    }
+
+    pub async fn remove_interfaces(self) -> Result<(), WireCtlError> {
+        self.wgapi.del_interface(&self.ifname).await
+    }
+
+    pub fn ifname(&self) -> &str {
+        &self.ifname
+    }
+
+    pub fn api(&self) -> WgApi {
+        self.wgapi
     }
 }
