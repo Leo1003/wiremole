@@ -10,7 +10,8 @@ This repository is still under development, currently unusable.
     - Backend
         - [ ] Kernelspace implementation
             - [ ] Linux
-            - [ ] OpenBSD/FreeBSD
+            - [ ] FreeBSD
+            - [ ] OpenBSD
         - [ ] Userspace implementation
         - [ ] Embedding [boringtun](https://github.com/cloudflare/boringtun) library
     - [ ] Admin authentication by specified wireguard IP
@@ -24,6 +25,7 @@ This repository is still under development, currently unusable.
         - [ ] MacOS
 - [ ] REST api
     - [ ] Auth by access token
+    - [ ] Generate invitation link to let user upload his public key
 - [ ] Web UI frontend
     - Powered by [yew](https://github.com/yewstack/yew)
     - [ ] Show realtime statistics
