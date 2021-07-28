@@ -10,7 +10,7 @@ use std::{
 
 pub fn emit_in_addr(addr: &Ipv4Addr, buf: &mut [u8]) {
     let caddr = in_addr {
-        s_addr: u32::from(*addr),
+        s_addr: u32::from(*addr).to_be(),
     };
 
     copy_raw_slice(buf, &caddr);
@@ -22,7 +22,7 @@ pub fn parse_in_addr(buf: &[u8]) -> Result<Ipv4Addr, DecodeError> {
     }
 
     let caddr: &in_addr = unsafe { from_raw_slice(buf)? };
-    Ok(Ipv4Addr::from(caddr.s_addr))
+    Ok(Ipv4Addr::from(u32::from_be(caddr.s_addr)))
 }
 
 pub fn emit_in6_addr(addr: &Ipv6Addr, buf: &mut [u8]) {
@@ -45,9 +45,9 @@ pub fn parse_in6_addr(buf: &[u8]) -> Result<Ipv6Addr, DecodeError> {
 pub fn emit_sockaddr_in(addr: &SocketAddrV4, buf: &mut [u8]) {
     let csockaddr = sockaddr_in {
         sin_family: AF_INET as u16,
-        sin_port: addr.port(),
+        sin_port: addr.port().to_be(),
         sin_addr: in_addr {
-            s_addr: u32::from(*addr.ip()),
+            s_addr: u32::from(*addr.ip()).to_be(),
         },
         sin_zero: [0u8; 8],
     };
@@ -58,14 +58,14 @@ pub fn emit_sockaddr_in(addr: &SocketAddrV4, buf: &mut [u8]) {
 fn parse_sockaddr_in(buf: &[u8]) -> Result<SocketAddrV4, DecodeError> {
     let csockaddr: &sockaddr_in = unsafe { from_raw_slice(buf)? };
 
-    let ipaddr = Ipv4Addr::from(csockaddr.sin_addr.s_addr);
-    Ok(SocketAddrV4::new(ipaddr, csockaddr.sin_port))
+    let ipaddr = Ipv4Addr::from(u32::from_be(csockaddr.sin_addr.s_addr));
+    Ok(SocketAddrV4::new(ipaddr, u16::from_be(csockaddr.sin_port)))
 }
 
 pub fn emit_sockaddr_in6(addr: &SocketAddrV6, buf: &mut [u8]) {
     let csockaddr = sockaddr_in6 {
         sin6_family: AF_INET6 as u16,
-        sin6_port: addr.port(),
+        sin6_port: addr.port().to_be(),
         sin6_flowinfo: addr.flowinfo(),
         sin6_addr: in6_addr {
             s6_addr: addr.ip().octets(),
@@ -82,7 +82,7 @@ fn parse_sockaddr_in6(buf: &[u8]) -> Result<SocketAddrV6, DecodeError> {
     let ipaddr = Ipv6Addr::from(csockaddr.sin6_addr.s6_addr);
     Ok(SocketAddrV6::new(
         ipaddr,
-        csockaddr.sin6_port,
+        u16::from_be(csockaddr.sin6_port),
         csockaddr.sin6_flowinfo,
         csockaddr.sin6_scope_id,
     ))
@@ -126,20 +126,63 @@ fn copy_raw_slice<T: Sized>(dst: &mut [u8], src: &T) {
     dst[..size_of_val(src)].copy_from_slice(src_slice);
 }
 
-unsafe fn from_raw_slice<T: Sized>(src: &[u8]) -> Result<&T, DecodeError> {
+#[allow(unused_unsafe)] // For nested unsafe
+unsafe fn from_raw_slice<'a, T: Sized>(src: &'a [u8]) -> Result<&'a T, DecodeError> {
     if src.len() < size_of::<T>() {
         return Err(DecodeError::from("Buffer too small"));
     }
     let buf = &src[..size_of::<T>()];
+    let ptr = buf.as_ptr() as *const T;
 
-    let (prefix, data, _) = buf.align_to::<T>();
-    if prefix.is_empty() {
-        Ok(&data[0])
-    } else {
-        Err(DecodeError::from("Buffer not aligned"))
-    }
+    let data: &'a T = unsafe { &*ptr };
+    Ok(data)
 }
 
 unsafe fn as_raw_slice<T: Sized>(src: &T) -> &[u8] {
     from_raw_parts((src as *const T) as *const u8, size_of::<T>())
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use super::*;
+
+    const SOCKADDR_IN_BYTES_1: &[u8] =
+        b"\x02\x00\x1c\x7a\x7f\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00"; // 127.0.0.1:7290
+    const SOCKADDR_IN_BYTES_2: &[u8] =
+        b"\x02\x00\xca\x6c\xc0\xa8\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00"; // 192.168.1.1:51820
+    const SOCKADDR_IN6_BYTES_1: &[u8] =
+        b"\x0a\x00\xca\x6c\x10\x00\x00\x00\xfe\x80\x00\x00\x00\x00\x00\x00\xe4\x58\x8e\xad\x89\xbb\x8e\x25\x03\x00\x00\x00";
+    // fe80::e458:8ead:89bb:8e25%3:51820 (flow 16)
+
+    #[test]
+    fn test_parse_sockaddr_in_1() {
+        let ipaddr = parse_sockaddr(&SOCKADDR_IN_BYTES_1).unwrap();
+        assert_eq!(ipaddr, SocketAddrV4::new(Ipv4Addr::LOCALHOST, 7290).into());
+    }
+
+    #[test]
+    fn test_parse_sockaddr_in_2() {
+        let ipaddr = parse_sockaddr(&SOCKADDR_IN_BYTES_2).unwrap();
+        assert_eq!(
+            ipaddr,
+            SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 51820).into()
+        );
+    }
+
+    #[test]
+    fn test_parse_sockaddr_in6_1() {
+        let ipaddr = parse_sockaddr(&SOCKADDR_IN6_BYTES_1).unwrap();
+        assert_eq!(
+            ipaddr,
+            SocketAddrV6::new(
+                Ipv6Addr::from_str("fe80::e458:8ead:89bb:8e25").unwrap(),
+                51820,
+                16,
+                3
+            )
+            .into()
+        );
+    }
 }
