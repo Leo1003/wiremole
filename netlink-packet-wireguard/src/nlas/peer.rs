@@ -28,6 +28,7 @@ pub enum WgPeerAttrs {
     RxBytes(u64),
     TxBytes(u64),
     AllowedIps(Vec<Vec<WgAllowedIpAttrs>>),
+    ProtocolVersion(u32),
 }
 
 impl Nla for WgPeerAttrs {
@@ -45,6 +46,7 @@ impl Nla for WgPeerAttrs {
             WgPeerAttrs::RxBytes(v) => size_of_val(v),
             WgPeerAttrs::TxBytes(v) => size_of_val(v),
             WgPeerAttrs::AllowedIps(nlas) => nlas.iter().map(|op| op.as_slice().buffer_len()).sum(),
+            WgPeerAttrs::ProtocolVersion(v) => size_of_val(v),
         }
     }
 
@@ -59,6 +61,7 @@ impl Nla for WgPeerAttrs {
             WgPeerAttrs::RxBytes(_) => WGPEER_A_RX_BYTES,
             WgPeerAttrs::TxBytes(_) => WGPEER_A_TX_BYTES,
             WgPeerAttrs::AllowedIps(_) => WGPEER_A_ALLOWEDIPS,
+            WgPeerAttrs::ProtocolVersion(_) => WGPEER_A_PROTOCOL_VERSION,
         }
     }
 
@@ -88,6 +91,7 @@ impl Nla for WgPeerAttrs {
                     len += op.as_slice().buffer_len();
                 }
             }
+            WgPeerAttrs::ProtocolVersion(v) => NativeEndian::write_u32(buffer, *v),
         }
     }
 }
@@ -138,7 +142,11 @@ impl<'a, T: AsRef<[u8]> + ?Sized> Parseable<NlaBuffer<&'a T>> for WgPeerAttrs {
                 }
                 Self::AllowedIps(ips)
             }
-            _ => return Err(DecodeError::from("invalid NLA (unknown kind)")),
+            WGPEER_A_PROTOCOL_VERSION => Self::ProtocolVersion(
+                parse_u32(payload)
+                    .context("invalid WGPEER_A_PERSISTENT_KEEPALIVE_INTERVAL value")?,
+            ),
+            kind => return Err(DecodeError::from(format!("invalid NLA kind: {}", kind))),
         })
     }
 }

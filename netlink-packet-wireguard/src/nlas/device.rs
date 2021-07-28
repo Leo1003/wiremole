@@ -114,7 +114,7 @@ impl<'a, T: AsRef<[u8]> + ?Sized> Parseable<NlaBuffer<&'a T>> for WgDeviceAttrs 
                 }
                 Self::Peers(peers)
             }
-            _ => return Err(DecodeError::from("invalid NLA (unknown kind)")),
+            kind => return Err(DecodeError::from(format!("invalid NLA kind: {}", kind))),
         })
     }
 }
