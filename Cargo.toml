@@ -7,3 +7,4 @@ members = [
 
 [patch.crates-io]
 netlink-packet-utils = { git = "https://github.com/Leo1003/netlink", branch = "generic-netlink" }
+netlink-packet-core = { git = "https://github.com/Leo1003/netlink", branch = "generic-netlink" }
