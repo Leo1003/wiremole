@@ -4,3 +4,5 @@ members = [
     "wiremole",
 ]
 
+[patch.crates-io]
+wirectl = { path = "wirectl" }
