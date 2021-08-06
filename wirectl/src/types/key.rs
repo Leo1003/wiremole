@@ -1,5 +1,5 @@
 use crate::WireCtlError;
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::{convert::TryFrom, fmt::{Debug, Formatter, Result as FmtResult}};
 use zeroize::{Zeroize, Zeroizing};
 
 pub const WG_KEY_LEN: usize = 32;
@@ -84,6 +84,18 @@ impl From<PublicKey> for [u8; 32] {
     }
 }
 
+impl TryFrom<&[u8]> for PublicKey {
+    type Error = WireCtlError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() == WG_KEY_LEN {
+            Ok(Self::from(<[u8; 32]>::try_from(value).unwrap()))
+        } else {
+            Err(WireCtlError::InvalidKeyLength)
+        }
+    }
+}
+
 #[derive(Clone, Zeroize)]
 #[zeroize(drop)]
 pub struct PrivateKey(x25519_dalek::StaticSecret);
@@ -133,6 +145,18 @@ impl From<[u8; 32]> for PrivateKey {
 impl From<PrivateKey> for [u8; 32] {
     fn from(privkey: PrivateKey) -> Self {
         privkey.0.to_bytes()
+    }
+}
+
+impl TryFrom<&[u8]> for PrivateKey {
+    type Error = WireCtlError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() == WG_KEY_LEN {
+            Ok(Self::from(<[u8; 32]>::try_from(value).unwrap()))
+        } else {
+            Err(WireCtlError::InvalidKeyLength)
+        }
     }
 }
 
@@ -189,5 +213,17 @@ impl From<[u8; 32]> for PresharedKey {
 impl From<PresharedKey> for [u8; 32] {
     fn from(key: PresharedKey) -> Self {
         key.0
+    }
+}
+
+impl TryFrom<&[u8]> for PresharedKey {
+    type Error = WireCtlError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() == WG_KEY_LEN {
+            Ok(Self::from(<[u8; 32]>::try_from(value).unwrap()))
+        } else {
+            Err(WireCtlError::InvalidKeyLength)
+        }
     }
 }
