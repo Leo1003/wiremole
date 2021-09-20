@@ -1,13 +1,10 @@
-use crate::db::{schema::*, FromDb};
+use crate::db::{schema::*, FromModel, IntoModel};
 use anyhow::Context;
 use ipnetwork::IpNetwork;
-use std::{
-    convert::TryFrom,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
-};
+use std::{convert::{Infallible, TryFrom}, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6}};
 use wirectl::types::{PresharedKey, PrivateKey, PublicKey};
 
-#[derive(Debug, Identifiable, Queryable, Insertable, AsChangeset)]
+#[derive(Clone, Debug, Identifiable, Queryable, Insertable, AsChangeset)]
 #[table_name = "interfaces"]
 #[primary_key(id)]
 pub struct Interface {
@@ -19,11 +16,11 @@ pub struct Interface {
     pub listen_port: u16,
 }
 
-impl FromDb for Interface {
+impl IntoModel for Interface {
     type Output = super::Interface;
     type Error = anyhow::Error;
 
-    fn from_db(self) -> Result<Self::Output, Self::Error> {
+    fn into_model(self) -> Result<Self::Output, Self::Error> {
         Ok(super::Interface {
             id: self.id,
             devname: self.devname,
@@ -38,7 +35,24 @@ impl FromDb for Interface {
     }
 }
 
-#[derive(Debug, Associations, Identifiable, Queryable, Insertable, AsChangeset)]
+impl FromModel<super::Interface> for Interface {
+    type Error = Infallible;
+
+    fn from_model(model: super::Interface) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: model.id,
+            devname: model.devname,
+            mtu: model.mtu,
+            privkey: model
+                .privkey
+                .map(|privkey| Vec::from(<[u8; 32]>::from(privkey))),
+            fwmark: model.fwmark,
+            listen_port: model.listen_port,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Associations, Identifiable, Queryable, Insertable, AsChangeset)]
 #[table_name = "interface_ips"]
 #[primary_key(id)]
 #[belongs_to(Interface)]
@@ -49,11 +63,11 @@ pub struct InterfaceIp {
     pub mask: u8,
 }
 
-impl FromDb for InterfaceIp {
+impl IntoModel for InterfaceIp {
     type Output = super::InterfaceIp;
     type Error = anyhow::Error;
 
-    fn from_db(self) -> Result<Self::Output, Self::Error> {
+    fn into_model(self) -> Result<Self::Output, Self::Error> {
         let ipaddr = match self.ipaddress.len() {
             4 => IpAddr::from(<[u8; 4]>::try_from(self.ipaddress.as_slice()).unwrap()),
             16 => IpAddr::from(<[u8; 16]>::try_from(self.ipaddress.as_slice()).unwrap()),
@@ -68,7 +82,23 @@ impl FromDb for InterfaceIp {
     }
 }
 
-#[derive(Debug, Associations, Identifiable, Queryable, Insertable, AsChangeset)]
+impl FromModel<super::InterfaceIp> for InterfaceIp {
+    type Error = Infallible;
+
+    fn from_model(model: super::InterfaceIp) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: model.id,
+            interface_id: model.interface_id,
+            ipaddress: match model.ipnetwork.ip() {
+                IpAddr::V4(addr) => addr.octets().into(),
+                IpAddr::V6(addr) => addr.octets().into(),
+            },
+            mask: model.ipnetwork.prefix(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Associations, Identifiable, Queryable, Insertable, AsChangeset)]
 #[table_name = "peers"]
 #[primary_key(id)]
 #[belongs_to(Interface)]
@@ -83,11 +113,11 @@ pub struct Peer {
     pub persistent_keepalive: Option<u16>,
 }
 
-impl FromDb for Peer {
+impl IntoModel for Peer {
     type Output = super::Peer;
     type Error = anyhow::Error;
 
-    fn from_db(self) -> Result<Self::Output, Self::Error> {
+    fn into_model(self) -> Result<Self::Output, Self::Error> {
         let sockaddr = if let Some((ip, port)) = self.endpoint_ip.zip(self.endpoint_port) {
             Some(match ip.len() {
                 4 => SocketAddrV4::new(
@@ -121,7 +151,7 @@ impl FromDb for Peer {
     }
 }
 
-#[derive(Debug, Associations, Identifiable, Queryable, Insertable, AsChangeset)]
+#[derive(Clone, Debug, Associations, Identifiable, Queryable, Insertable, AsChangeset)]
 #[table_name = "allowed_ips"]
 #[primary_key(id)]
 #[belongs_to(Peer)]
@@ -132,11 +162,11 @@ pub struct AllowedIp {
     pub mask: u8,
 }
 
-impl FromDb for AllowedIp {
+impl IntoModel for AllowedIp {
     type Output = super::AllowedIp;
     type Error = anyhow::Error;
 
-    fn from_db(self) -> Result<Self::Output, Self::Error> {
+    fn into_model(self) -> Result<Self::Output, Self::Error> {
         let ipaddr = match self.ipaddress.len() {
             4 => IpAddr::from(<[u8; 4]>::try_from(self.ipaddress.as_slice()).unwrap()),
             16 => IpAddr::from(<[u8; 16]>::try_from(self.ipaddress.as_slice()).unwrap()),
@@ -147,6 +177,22 @@ impl FromDb for AllowedIp {
             peer_id: self.peer_id,
             ipnetwork: IpNetwork::new(ipaddr, self.mask)
                 .with_context(|| "Invalid network mask in the database")?,
+        })
+    }
+}
+
+impl FromModel<super::AllowedIp> for AllowedIp {
+    type Error = Infallible;
+
+    fn from_model(model: super::AllowedIp) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: model.id,
+            peer_id: model.peer_id,
+            ipaddress: match model.ipnetwork.ip() {
+                IpAddr::V4(addr) => addr.octets().into(),
+                IpAddr::V6(addr) => addr.octets().into(),
+            },
+            mask: model.ipnetwork.prefix(),
         })
     }
 }
