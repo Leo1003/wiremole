@@ -1,5 +1,8 @@
 use crate::WireCtlError;
-use std::{convert::TryFrom, fmt::{Debug, Formatter, Result as FmtResult}};
+use std::{
+    convert::TryFrom,
+    fmt::{self, Debug, Formatter, Result as FmtResult},
+};
 use zeroize::{Zeroize, Zeroizing};
 
 pub const WG_KEY_LEN: usize = 32;
@@ -224,6 +227,92 @@ impl TryFrom<&[u8]> for PresharedKey {
             Ok(Self::from(<[u8; 32]>::try_from(value).unwrap()))
         } else {
             Err(WireCtlError::InvalidKeyLength)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+mod serde_impl {
+    use super::*;
+    use serde::{
+        de::{Error as DeError, Visitor},
+        Deserialize, Serialize,
+    };
+    pub const SERDE_EXPECTED_KEY_LEN: &str = "32 bytes key buffer";
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct BufferVisitor;
+
+    impl<'de> Visitor<'de> for BufferVisitor {
+        type Value = [u8; 32];
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            write!(formatter, "{}", SERDE_EXPECTED_KEY_LEN)
+        }
+
+        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+        where
+            E: DeError,
+        {
+            Self::Value::try_from(v)
+                .map_err(|_| E::invalid_length(v.len(), &SERDE_EXPECTED_KEY_LEN))
+        }
+    }
+
+    impl Serialize for PublicKey {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_bytes(self.0.as_bytes())
+        }
+    }
+
+    impl<'de> Deserialize<'de> for PublicKey {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let buf = deserializer.deserialize_bytes(BufferVisitor)?;
+            Ok(Self::from(buf))
+        }
+    }
+
+    impl Serialize for PrivateKey {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_bytes(&self.0.to_bytes())
+        }
+    }
+
+    impl<'de> Deserialize<'de> for PrivateKey {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let buf = deserializer.deserialize_bytes(BufferVisitor)?;
+            Ok(Self::from(buf))
+        }
+    }
+
+    impl Serialize for PresharedKey {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for PresharedKey {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let buf = deserializer.deserialize_bytes(BufferVisitor)?;
+            Ok(Self::from(buf))
         }
     }
 }

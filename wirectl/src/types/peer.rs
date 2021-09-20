@@ -1,10 +1,14 @@
 use super::{PresharedKey, PublicKey};
 use ipnetwork::IpNetwork;
-use std::net::Ipv4Addr;
-use std::net::{IpAddr, SocketAddr};
-use std::time::SystemTime;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    time::SystemTime,
+};
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Peer {
     pub(crate) pubkey: PublicKey,
     pub(crate) preshared: PresharedKey,
