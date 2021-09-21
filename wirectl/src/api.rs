@@ -48,7 +48,7 @@ impl WgApi {
     pub(crate) async fn set_config(
         self,
         ifname: &str,
-        conf: WgDeviceSettings,
+        conf: WgDeviceSetter,
     ) -> Result<(), WireCtlError> {
         match self {
             WgApi::IPC => ipc::set_config(ifname, conf).await,

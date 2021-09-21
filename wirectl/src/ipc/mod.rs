@@ -138,8 +138,8 @@ where
         match key {
             "private_key" => {
                 let privkey = PrivateKey::from_hex(value)?;
-                device.pubkey = Some(PublicKey::from(&privkey));
-                device.privkey = Some(privkey);
+                device.public_key = Some(PublicKey::from(&privkey));
+                device.private_key = Some(privkey);
             }
             "listen_port" => {
                 device.listen_port = value.parse()?;
@@ -205,7 +205,7 @@ where
         let (key, value) = line.split_once('=').ok_or(WireCtlError::InvalidProtocol)?;
 
         match key {
-            "preshared_key" => peer.preshared = PresharedKey::from_hex(value)?,
+            "preshared_key" => peer.preshared_key = PresharedKey::from_hex(value)?,
             "allowed_ip" => {
                 let allowed_ip = value.parse()?;
                 peer.allow_ips.push(allowed_ip);
@@ -252,7 +252,7 @@ where
     Ok(())
 }
 
-pub async fn set_config(ifname: &str, conf: WgDeviceSettings) -> Result<(), WireCtlError> {
+pub async fn set_config(ifname: &str, conf: WgDeviceSetter) -> Result<(), WireCtlError> {
     let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
 
     emit_device_config(&mut ctrl_sock, conf).await?;
@@ -287,10 +287,7 @@ pub async fn set_config(ifname: &str, conf: WgDeviceSettings) -> Result<(), Wire
     }
 }
 
-async fn emit_device_config<S>(
-    ctrl_sock: &mut S,
-    conf: WgDeviceSettings,
-) -> Result<(), WireCtlError>
+async fn emit_device_config<S>(ctrl_sock: &mut S, conf: WgDeviceSetter) -> Result<(), WireCtlError>
 where
     S: AsyncWrite + Unpin + ?Sized,
 {
@@ -321,7 +318,7 @@ where
     Ok(())
 }
 
-async fn emit_peer_config<S>(ctrl_sock: &mut S, conf: PeerSettings) -> Result<(), WireCtlError>
+async fn emit_peer_config<S>(ctrl_sock: &mut S, conf: PeerSetter) -> Result<(), WireCtlError>
 where
     S: AsyncWrite + Unpin + ?Sized,
 {

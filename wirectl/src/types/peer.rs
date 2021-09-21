@@ -10,21 +10,21 @@ use std::{
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Peer {
-    pub(crate) pubkey: PublicKey,
-    pub(crate) preshared: PresharedKey,
-    pub(crate) endpoint: SocketAddr,
-    pub(crate) last_handshake: SystemTime,
-    pub(crate) rx_bytes: u64,
-    pub(crate) tx_bytes: u64,
-    pub(crate) persistent_keepalive: u16,
-    pub(crate) allow_ips: Vec<IpNetwork>,
+    pub public_key: PublicKey,
+    pub preshared_key: PresharedKey,
+    pub endpoint: SocketAddr,
+    pub last_handshake: SystemTime,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+    pub persistent_keepalive: u16,
+    pub allow_ips: Vec<IpNetwork>,
 }
 
 impl Peer {
-    pub(crate) fn new(pubkey: PublicKey) -> Self {
+    pub fn new(pubkey: PublicKey) -> Self {
         Self {
-            pubkey,
-            preshared: PresharedKey::default(),
+            public_key: pubkey,
+            preshared_key: PresharedKey::default(),
             endpoint: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
             last_handshake: SystemTime::UNIX_EPOCH,
             rx_bytes: 0,
@@ -34,40 +34,12 @@ impl Peer {
         }
     }
 
-    pub fn public_key(&self) -> &PublicKey {
-        &self.pubkey
-    }
-
-    pub fn preshared_key(&self) -> Option<&PresharedKey> {
+    pub fn preshared_key_option(&self) -> Option<&PresharedKey> {
         if self.has_preshared_key() {
-            Some(&self.preshared)
+            Some(&self.preshared_key)
         } else {
             None
         }
-    }
-
-    pub fn endpoint(&self) -> SocketAddr {
-        self.endpoint
-    }
-
-    pub fn last_handshake(&self) -> SystemTime {
-        self.last_handshake
-    }
-
-    pub fn rx_bytes(&self) -> u64 {
-        self.rx_bytes
-    }
-
-    pub fn tx_bytes(&self) -> u64 {
-        self.tx_bytes
-    }
-
-    pub fn persistent_keepalive(&self) -> u16 {
-        self.persistent_keepalive
-    }
-
-    pub fn allow_ips(&self) -> &[IpNetwork] {
-        &self.allow_ips
     }
 
     pub fn is_address_allowed(&self, addr: IpAddr) -> bool {
@@ -94,11 +66,11 @@ impl Peer {
     }
 
     pub fn has_public_key(&self) -> bool {
-        !self.pubkey.is_empty()
+        !self.public_key.is_empty()
     }
 
     pub fn has_preshared_key(&self) -> bool {
-        !self.preshared.is_empty()
+        !self.preshared_key.is_empty()
     }
 
     pub fn has_persistent_keepalive(&self) -> bool {
@@ -107,7 +79,7 @@ impl Peer {
 }
 
 #[derive(Debug)]
-pub struct PeerSettings {
+pub struct PeerSetter {
     pub(crate) pubkey: PublicKey,
     pub(crate) preshared_key: Option<PresharedKey>,
     pub(crate) endpoint: Option<SocketAddr>,
@@ -118,9 +90,9 @@ pub struct PeerSettings {
     pub(crate) remove: bool,
 }
 
-impl PeerSettings {
+impl PeerSetter {
     pub fn new(public_key: PublicKey) -> Self {
-        PeerSettings {
+        PeerSetter {
             pubkey: public_key,
             preshared_key: None,
             endpoint: None,
@@ -163,13 +135,13 @@ impl PeerSettings {
     }
 }
 
-impl From<Peer> for PeerSettings {
+impl From<Peer> for PeerSetter {
     fn from(peer: Peer) -> Self {
-        Self::new(peer.pubkey)
+        Self::new(peer.public_key)
     }
 }
-impl From<&Peer> for PeerSettings {
+impl From<&Peer> for PeerSetter {
     fn from(peer: &Peer) -> Self {
-        Self::new(peer.pubkey.clone())
+        Self::new(peer.public_key.clone())
     }
 }

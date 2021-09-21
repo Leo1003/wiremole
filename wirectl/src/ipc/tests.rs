@@ -66,49 +66,49 @@ fn ipc_parse_1() {
         let device = parse_device_config(&mut stream, "test").await.unwrap();
 
         assert_eq!(
-            device.private_key().unwrap().to_hex(),
+            device.private_key.unwrap().to_hex(),
             "e84b5a6d2717c1003a13b431570353dbaca9146cf150c5f8575680feba52027a"
         );
-        assert_eq!(device.listen_port(), 12912);
+        assert_eq!(device.listen_port, 12912);
         assert_eq!(
-            device.peers()[0].public_key().to_hex(),
+            device.peers[0].public_key.to_hex(),
             "b85996fecc9c7f1fc6d2572a76eda11d59bcd20be8e543b15ce4bd85a8e75a33"
         );
         assert_eq!(
-            device.peers()[0].preshared_key().unwrap().to_hex(),
+            device.peers[0].preshared_key_option().unwrap().to_hex(),
             "188515093e952f5f22e865cef3012e72f8b5f0b598ac0309d5dacce3b70fcf52"
         );
-        assert_eq!(device.peers()[0].allow_ips(), &[cidr(192, 168, 4, 4, 32)]);
+        assert_eq!(device.peers[0].allow_ips, &[cidr(192, 168, 4, 4, 32)]);
         assert_eq!(
-            device.peers()[0].endpoint(),
+            device.peers[0].endpoint,
             "[abcd:23::33%2]:51820".parse().unwrap()
         );
 
         assert_eq!(
-            device.peers()[1].public_key().to_hex(),
+            device.peers[1].public_key.to_hex(),
             "58402e695ba1772b1cc9309755f043251ea77fdcf10fbe63989ceb7e19321376"
         );
-        assert_eq!(device.peers()[1].tx_bytes(), 38333);
-        assert_eq!(device.peers()[1].rx_bytes(), 2224);
-        assert_eq!(device.peers()[1].allow_ips(), &[cidr(192, 168, 4, 6, 32)]);
-        assert_eq!(device.peers()[1].persistent_keepalive(), 111);
+        assert_eq!(device.peers[1].tx_bytes, 38333);
+        assert_eq!(device.peers[1].rx_bytes, 2224);
+        assert_eq!(device.peers[1].allow_ips, &[cidr(192, 168, 4, 6, 32)]);
+        assert_eq!(device.peers[1].persistent_keepalive, 111);
         assert_eq!(
-            device.peers()[1].endpoint(),
+            device.peers[1].endpoint,
             "182.122.22.19:3233".parse().unwrap()
         );
 
         assert_eq!(
-            device.peers()[2].public_key().to_hex(),
+            device.peers[2].public_key.to_hex(),
             "662e14fd594556f522604703340351258903b64f35553763f19426ab2a515c58"
         );
-        assert_eq!(device.peers()[2].tx_bytes(), 1212111);
-        assert_eq!(device.peers()[2].rx_bytes(), 1929999999);
+        assert_eq!(device.peers[2].tx_bytes, 1212111);
+        assert_eq!(device.peers[2].rx_bytes, 1929999999);
         assert_eq!(
-            device.peers()[2].allow_ips(),
+            device.peers[2].allow_ips,
             &[cidr(192, 168, 4, 10, 32), cidr(192, 168, 4, 11, 32)]
         );
         assert_eq!(
-            device.peers()[2].endpoint(),
+            device.peers[2].endpoint,
             "5.152.198.39:51820".parse().unwrap()
         );
     })
@@ -119,7 +119,7 @@ fn ipc_emit_1() {
     block_on(async {
         let mut stream = Cursor::new(Vec::new());
 
-        let mut settings = WgDeviceSettings {
+        let mut settings = WgDeviceSetter {
             devname: "test".into(),
             privkey: Some(
                 PrivateKey::from_hex(
@@ -133,7 +133,7 @@ fn ipc_emit_1() {
             peers: Vec::new(),
         };
 
-        settings.peers.push(PeerSettings {
+        settings.peers.push(PeerSetter {
             pubkey: PublicKey::from_hex(
                 "b85996fecc9c7f1fc6d2572a76eda11d59bcd20be8e543b15ce4bd85a8e75a33",
             )
@@ -152,7 +152,7 @@ fn ipc_emit_1() {
             remove: false,
         });
 
-        settings.peers.push(PeerSettings {
+        settings.peers.push(PeerSetter {
             pubkey: PublicKey::from_hex(
                 "58402e695ba1772b1cc9309755f043251ea77fdcf10fbe63989ceb7e19321376",
             )
@@ -166,7 +166,7 @@ fn ipc_emit_1() {
             remove: false,
         });
 
-        settings.peers.push(PeerSettings {
+        settings.peers.push(PeerSetter {
             pubkey: PublicKey::from_hex(
                 "662e14fd594556f522604703340351258903b64f35553763f19426ab2a515c58",
             )
@@ -183,7 +183,7 @@ fn ipc_emit_1() {
             remove: false,
         });
 
-        settings.peers.push(PeerSettings {
+        settings.peers.push(PeerSetter {
             pubkey: PublicKey::from_hex(
                 "e818b58db5274087fcc1be5dc728cf53d3b5726b4cef6b9bab8f8f8c2452c25c",
             )

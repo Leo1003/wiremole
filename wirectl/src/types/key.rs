@@ -1,8 +1,10 @@
 use crate::WireCtlError;
+use rand::{CryptoRng, RngCore};
 use std::{
     convert::TryFrom,
     fmt::{self, Debug, Formatter, Result as FmtResult},
 };
+use x25519_dalek::StaticSecret;
 use zeroize::{Zeroize, Zeroizing};
 
 pub const WG_KEY_LEN: usize = 32;
@@ -59,7 +61,7 @@ impl PublicKey {
     }
 
     pub fn is_empty(&self) -> bool {
-        *self.0.as_bytes() == [0u8; 32]
+        *self.0.as_bytes() == [0u8; WG_KEY_LEN]
     }
 }
 
@@ -75,13 +77,13 @@ impl From<&PrivateKey> for PublicKey {
     }
 }
 
-impl From<[u8; 32]> for PublicKey {
-    fn from(bytes: [u8; 32]) -> Self {
+impl From<[u8; WG_KEY_LEN]> for PublicKey {
+    fn from(bytes: [u8; WG_KEY_LEN]) -> Self {
         PublicKey(x25519_dalek::PublicKey::from(bytes))
     }
 }
 
-impl From<PublicKey> for [u8; 32] {
+impl From<PublicKey> for [u8; WG_KEY_LEN] {
     fn from(pubkey: PublicKey) -> Self {
         pubkey.0.to_bytes()
     }
@@ -91,11 +93,9 @@ impl TryFrom<&[u8]> for PublicKey {
     type Error = WireCtlError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        if value.len() == WG_KEY_LEN {
-            Ok(Self::from(<[u8; 32]>::try_from(value).unwrap()))
-        } else {
-            Err(WireCtlError::InvalidKeyLength)
-        }
+        <[u8; WG_KEY_LEN]>::try_from(value)
+            .map(Self::from)
+            .map_err(|_| WireCtlError::InvalidKeyLength)
     }
 }
 
@@ -115,13 +115,20 @@ impl PrivateKey {
     pub fn from_base64(input: &str) -> Result<Self, WireCtlError> {
         let mut buf = Zeroizing::new([0u8; WG_KEY_LEN]);
         base64_decode_checklen(input, &mut buf)?;
-        Ok(PrivateKey(x25519_dalek::StaticSecret::from(*buf)))
+        Ok(Self(x25519_dalek::StaticSecret::from(*buf)))
     }
 
     pub fn from_hex(input: &str) -> Result<Self, WireCtlError> {
         let mut buf = Zeroizing::new([0u8; WG_KEY_LEN]);
         hex_decode_checklen(input, &mut buf)?;
-        Ok(PrivateKey(x25519_dalek::StaticSecret::from(*buf)))
+        Ok(Self(x25519_dalek::StaticSecret::from(*buf)))
+    }
+
+    pub fn generate<R>(&self, csprng: R) -> Self
+    where
+        R: RngCore + CryptoRng,
+    {
+        Self(StaticSecret::new(csprng))
     }
 
     pub fn to_base64(&self) -> String {
@@ -139,13 +146,13 @@ impl PrivateKey {
     }
 }
 
-impl From<[u8; 32]> for PrivateKey {
-    fn from(bytes: [u8; 32]) -> Self {
+impl From<[u8; WG_KEY_LEN]> for PrivateKey {
+    fn from(bytes: [u8; WG_KEY_LEN]) -> Self {
         PrivateKey(x25519_dalek::StaticSecret::from(bytes))
     }
 }
 
-impl From<PrivateKey> for [u8; 32] {
+impl From<PrivateKey> for [u8; WG_KEY_LEN] {
     fn from(privkey: PrivateKey) -> Self {
         privkey.0.to_bytes()
     }
@@ -155,17 +162,15 @@ impl TryFrom<&[u8]> for PrivateKey {
     type Error = WireCtlError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        if value.len() == WG_KEY_LEN {
-            Ok(Self::from(<[u8; 32]>::try_from(value).unwrap()))
-        } else {
-            Err(WireCtlError::InvalidKeyLength)
-        }
+        <[u8; WG_KEY_LEN]>::try_from(value)
+            .map(Self::from)
+            .map_err(|_| WireCtlError::InvalidKeyLength)
     }
 }
 
 #[derive(Clone, Default, Zeroize)]
 #[zeroize(drop)]
-pub struct PresharedKey([u8; 32]);
+pub struct PresharedKey([u8; WG_KEY_LEN]);
 
 impl Debug for PresharedKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -188,6 +193,15 @@ impl PresharedKey {
         Ok(PresharedKey(*buf))
     }
 
+    pub fn generate<R>(&self, mut csprng: R) -> Self
+    where
+        R: RngCore + CryptoRng,
+    {
+        let mut psk = Self::default();
+        csprng.fill_bytes(&mut psk.0);
+        psk
+    }
+
     pub fn to_base64(&self) -> String {
         base64::encode(self.0)
     }
@@ -197,7 +211,7 @@ impl PresharedKey {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0 == [0u8; 32]
+        self.0 == [0u8; WG_KEY_LEN]
     }
 }
 
@@ -207,13 +221,13 @@ impl AsRef<[u8]> for PresharedKey {
     }
 }
 
-impl From<[u8; 32]> for PresharedKey {
-    fn from(bytes: [u8; 32]) -> Self {
+impl From<[u8; WG_KEY_LEN]> for PresharedKey {
+    fn from(bytes: [u8; WG_KEY_LEN]) -> Self {
         PresharedKey(bytes)
     }
 }
 
-impl From<PresharedKey> for [u8; 32] {
+impl From<PresharedKey> for [u8; WG_KEY_LEN] {
     fn from(key: PresharedKey) -> Self {
         key.0
     }
@@ -223,11 +237,9 @@ impl TryFrom<&[u8]> for PresharedKey {
     type Error = WireCtlError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        if value.len() == WG_KEY_LEN {
-            Ok(Self::from(<[u8; 32]>::try_from(value).unwrap()))
-        } else {
-            Err(WireCtlError::InvalidKeyLength)
-        }
+        <[u8; WG_KEY_LEN]>::try_from(value)
+            .map(Self::from)
+            .map_err(|_| WireCtlError::InvalidKeyLength)
     }
 }
 
@@ -244,7 +256,7 @@ mod serde_impl {
     pub struct BufferVisitor;
 
     impl<'de> Visitor<'de> for BufferVisitor {
-        type Value = [u8; 32];
+        type Value = [u8; WG_KEY_LEN];
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             write!(formatter, "{}", SERDE_EXPECTED_KEY_LEN)

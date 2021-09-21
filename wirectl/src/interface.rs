@@ -54,7 +54,7 @@ impl WgInterface {
         self.wgapi.get_config(&self.ifname).await
     }
 
-    pub async fn set_config(&self, conf: WgDeviceSettings) -> Result<(), WireCtlError> {
+    pub async fn set_config(&self, conf: WgDeviceSetter) -> Result<(), WireCtlError> {
         if conf.devname != self.ifname {
             return Err(WireCtlError::InvalidConfig);
         }
