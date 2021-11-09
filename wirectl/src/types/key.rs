@@ -124,7 +124,7 @@ impl PrivateKey {
         Ok(Self(x25519_dalek::StaticSecret::from(*buf)))
     }
 
-    pub fn generate<R>(&self, csprng: R) -> Self
+    pub fn generate<R>(csprng: R) -> Self
     where
         R: RngCore + CryptoRng,
     {
@@ -193,7 +193,7 @@ impl PresharedKey {
         Ok(PresharedKey(*buf))
     }
 
-    pub fn generate<R>(&self, mut csprng: R) -> Self
+    pub fn generate<R>(mut csprng: R) -> Self
     where
         R: RngCore + CryptoRng,
     {
