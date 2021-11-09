@@ -1,9 +1,9 @@
 [package]
 name = "wirectl"
 description = "Library to control Wireguard with kernel or userspace implementation"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Leo <leo881003@gmail.com>"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 repository = "https://github.com/Leo1003/wiremole"
 license = "Apache-2.0"
@@ -12,12 +12,13 @@ categories = ["network-programming"]
 
 [features]
 default = ["serde"]
+bin = ["clap"]
 
 [dependencies]
 anyhow = "1.0.38"
 thiserror = "1.0.24"
 log = "0.4.14"
-x25519-dalek = "2.0.0-pre.0"
+x25519-dalek = "2.0.0-pre.1"
 bitflags = "1.2.1"
 ipnetwork = "0.18.0"
 zeroize = "1.2.0"
@@ -33,5 +34,10 @@ once_cell = "1.8.0"
 smol = "1.2.5"
 rand = "0.8.4"
 serde = { version = "1.0.130", features = ["derive"], optional = true }
+clap = { version = "3.0.0-beta.5", optional = true }
 
 [dev-dependencies]
+
+[[bin]]
+name = "wirectl"
+required-features = ["bin"]
