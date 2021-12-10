@@ -34,7 +34,7 @@ once_cell = "1.8.0"
 smol = "1.2.5"
 rand = "0.8.4"
 serde = { version = "1.0.130", features = ["derive"], optional = true }
-clap = { version = "3.0.0-beta.5", optional = true }
+clap = { version = "3.0.0-rc.3", features = ["derive"], optional = true }
 
 [dev-dependencies]
 
