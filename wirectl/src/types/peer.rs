@@ -76,6 +76,10 @@ impl Peer {
     pub fn has_persistent_keepalive(&self) -> bool {
         self.persistent_keepalive != 0
     }
+
+    pub fn has_endpoint(&self) -> bool {
+        self.endpoint.ip().is_unspecified()
+    }
 }
 
 #[derive(Debug)]

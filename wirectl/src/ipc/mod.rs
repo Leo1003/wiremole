@@ -16,7 +16,7 @@ use std::{
     env,
     ffi::OsStr,
     fmt::Arguments,
-    io::{ErrorKind, Write as _},
+    io::{Error, ErrorKind, Write as _},
     os::unix::fs::FileTypeExt,
     path::PathBuf,
     str::FromStr,
@@ -77,7 +77,7 @@ pub async fn list_interfaces() -> Result<Vec<String>, WireCtlError> {
             }
 
             let ifname = sockname.file_stem().unwrap();
-            if check_device(ifname).await {
+            if check_device(ifname).await.is_ok() {
                 interfaces.push(ifname.to_string_lossy().into_owned());
             }
         }
@@ -97,6 +97,7 @@ async fn open_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStream,
             // Try to clean up the unused socket
             if e.kind() == ErrorKind::ConnectionRefused {
                 remove_file(&socket_path).await.ok();
+                return Err(Error::from(ErrorKind::NotFound).into());
             }
 
             return Err(e.into());
@@ -106,9 +107,9 @@ async fn open_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStream,
     Ok(socket)
 }
 
-pub async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> bool {
+pub async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<(), WireCtlError> {
     let rslt = open_device(ifname).await;
-    rslt.is_ok()
+    rslt.map(|_| ())
 }
 
 pub async fn get_config(ifname: &str) -> Result<WgDevice, WireCtlError> {
@@ -247,7 +248,7 @@ where
 {
     let mut buf = Vec::new();
     write!(&mut buf, "{}", args)
-        .map_err(|_| WireCtlError::Io(std::io::Error::new(ErrorKind::Other, "formatter error")))?;
+        .map_err(|_| WireCtlError::Io(Error::new(ErrorKind::Other, "formatter error")))?;
     ctrl_sock.write_all(buf.as_slice()).await?;
     Ok(())
 }

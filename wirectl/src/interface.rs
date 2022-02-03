@@ -30,6 +30,28 @@ impl WgInterface {
         })
     }
 
+    pub async fn get_interface(ifname: &str) -> Result<WgInterface, WireCtlError> {
+        for api in AVAILABLE_WG_APIS {
+            match api.check_interface(ifname).await {
+                Ok(_) => {
+                    return Ok(WgInterface {
+                        ifname: ifname.to_owned(),
+                        wgapi: api,
+                    })
+                }
+                Err(e) => {
+                    if let WireCtlError::NotFound = e {
+                        continue;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        Err(WireCtlError::NotFound)
+    }
+
     pub async fn get_interfaces() -> Result<Vec<WgInterface>, WireCtlError> {
         futures::stream::iter(AVAILABLE_WG_APIS.iter().copied())
             .then(|api| {

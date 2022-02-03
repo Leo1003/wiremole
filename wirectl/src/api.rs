@@ -1,7 +1,8 @@
 use crate::WireCtlError;
 use crate::{ipc, types::*};
 use futures::TryStreamExt;
-use rtnetlink::new_connection;
+use rtnetlink::new_connection_with_socket;
+use rtnetlink::sys::SmolSocket;
 
 cfg_if! {
     if #[cfg(target_os = "linux")] {
@@ -28,6 +29,16 @@ impl WgApi {
     pub(crate) async fn list_interfaces(self) -> Result<Vec<String>, WireCtlError> {
         match self {
             WgApi::IPC => ipc::list_interfaces().await,
+            #[cfg(target_os = "linux")]
+            WgApi::Linux => todo!(),
+            #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
+            WgApi::BSD => todo!(),
+        }
+    }
+
+    pub(crate) async fn check_interface(self, ifname: &str) -> Result<(), WireCtlError> {
+        match self {
+            WgApi::IPC => ipc::check_device(ifname).await,
             #[cfg(target_os = "linux")]
             WgApi::Linux => todo!(),
             #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
@@ -77,17 +88,17 @@ impl WgApi {
             #[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
             WgApi::BSD => todo!(),
         };
-        if !is_wg_if {
+        if is_wg_if.is_err() {
             return Err(WireCtlError::NotFound);
         }
 
-        let (connection, handle, _) = new_connection()?;
+        let (connection, handle, _) = new_connection_with_socket::<SmolSocket>()?;
         smol::spawn(connection).detach();
 
         let mut links = handle
             .link()
             .get()
-            .set_name_filter(ifname.to_owned())
+            .match_name(ifname.to_owned())
             .execute();
 
         if let Some(msg) = links.try_next().await? {
