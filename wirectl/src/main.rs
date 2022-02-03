@@ -115,6 +115,7 @@ fn print_interface_pretty(config: &WgDevice) {
     if config.has_fwmark() {
         println!("  public key: {}", config.fwmark);
     }
+    println!();
 
     for peer in &config.peers {
         println!("peer: {}", peer.public_key.to_base64());
@@ -128,7 +129,7 @@ fn print_interface_pretty(config: &WgDevice) {
         if peer.has_endpoint() {
             println!("  endpoint: {}", peer.endpoint);
         }
-        print!("allowed ips: ");
+        print!("  allowed ips: ");
         if peer.allow_ips.is_empty() {
             println!("(none)");
         } else {
@@ -139,7 +140,7 @@ fn print_interface_pretty(config: &WgDevice) {
         }
 
         if peer.last_handshake != SystemTime::UNIX_EPOCH {
-            print!("latest handshake: ");
+            print!("  latest handshake: ");
             let time = OffsetDateTime::from(peer.last_handshake);
             let dura = OffsetDateTime::now_utc() - time;
             if dura.is_positive() {
@@ -161,9 +162,9 @@ fn print_interface_pretty(config: &WgDevice) {
             }
         }
 
-        println!("transfer: {} received, {} sent", format_bytes(peer.rx_bytes), format_bytes(peer.tx_bytes));
+        println!("  transfer: {} received, {} sent", format_bytes(peer.rx_bytes), format_bytes(peer.tx_bytes));
         if peer.has_persistent_keepalive() {
-            print!("persistent keepalive: every {} seconds", peer.persistent_keepalive);
+            print!("  persistent keepalive: every {} seconds", peer.persistent_keepalive);
         }
 
         println!();
