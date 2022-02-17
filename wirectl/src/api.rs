@@ -95,11 +95,7 @@ impl WgApi {
         let (connection, handle, _) = new_connection_with_socket::<SmolSocket>()?;
         smol::spawn(connection).detach();
 
-        let mut links = handle
-            .link()
-            .get()
-            .match_name(ifname.to_owned())
-            .execute();
+        let mut links = handle.link().get().match_name(ifname.to_owned()).execute();
 
         if let Some(msg) = links.try_next().await? {
             handle.link().del(msg.header.index).execute().await?;
