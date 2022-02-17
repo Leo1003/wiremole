@@ -1,12 +1,12 @@
 use clap::Parser;
 use smol::block_on;
-use time::OffsetDateTime;
 use std::env;
 use std::io::stdin;
 use std::process::exit;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
+use time::OffsetDateTime;
 use wirectl::interface::WgInterface;
-use wirectl::types::{PresharedKey, PrivateKey, PublicKey, WG_KEY_BASE64_LEN, WgDevice};
+use wirectl::types::{PresharedKey, PrivateKey, PublicKey, WgDevice, WG_KEY_BASE64_LEN};
 use wirectl::WireCtlError;
 use zeroize::Zeroizing;
 
@@ -90,11 +90,123 @@ async fn show_interface(
     let config = wgif.get_config().await?;
 
     if let Some(fields) = &opt.fields {
-        todo!();
+        dump_interface(&config, fields, print_ifname);
     } else {
         print_interface_pretty(&config);
     }
     Ok(())
+}
+
+fn dump_interface(config: &WgDevice, fields: &ShowFields, print_ifname: bool) {
+    // nff: non first field
+    let mut nff = false;
+
+    if print_ifname {
+        print!("{}", config.device_name);
+        nff = true;
+    }
+    if fields.private_key {
+        if nff {
+            print!("\t");
+        }
+        if let Some(private_key) = &config.private_key {
+            print!("{}", private_key.to_base64());
+        } else {
+            print!("(none)");
+        }
+        nff = true;
+    }
+    if fields.public_key {
+        if nff {
+            print!("\t");
+        }
+        if let Some(public_key) = &config.public_key {
+            print!("{}", public_key.to_base64());
+        } else {
+            print!("(none)");
+        }
+        nff = true;
+    }
+    if fields.listen_port {
+        if nff {
+            print!("\t");
+        }
+        print!("{}", config.listen_port);
+        nff = true;
+    }
+    if fields.fwmark {
+        if nff {
+            print!("\t");
+        }
+        if config.has_fwmark() {
+            print!("{}", config.fwmark);
+        } else {
+            print!("off");
+        }
+        //nff = true;
+    }
+    println!();
+
+    if fields.contains_peer_fields() {
+        // Peers
+        for peer in &config.peers {
+            if print_ifname {
+                print!("{}\t", config.device_name);
+            }
+            // If any peer-related fields are specified, always print peer public key
+            // Including `field.peers`
+            print!("{}", peer.public_key.to_base64());
+
+            if fields.preshared_keys {
+                if peer.has_preshared_key() {
+                    print!("\t{}", peer.preshared_key.to_base64());
+                } else {
+                    print!("\t(none)");
+                }
+            }
+            if fields.endpoints {
+                if peer.has_endpoint() {
+                    print!("\t{}", peer.endpoint);
+                } else {
+                    print!("\t(none)");
+                }
+            }
+            if fields.allowed_ips {
+                if peer.allow_ips.is_empty() {
+                    print!("\t(none)");
+                } else {
+                    let ips_str = peer.allow_ips.iter().map(|ips| format!("{}", ips)).fold(
+                        String::new(),
+                        |mut s, a| {
+                            if !s.is_empty() {
+                                s.push(',');
+                            }
+                            s.push_str(&a);
+                            s
+                        },
+                    );
+                    print!("\t{}", &ips_str);
+                }
+            }
+            if fields.latest_handshakes {
+
+                print!("\t{}", peer.last_handshake.duration_since(UNIX_EPOCH).unwrap().as_secs());
+            }
+            if fields.transfer {
+                print!("\t{}\t{}", peer.rx_bytes, peer.tx_bytes);
+            }
+            if fields.persistent_keepalive {
+                if peer.has_persistent_keepalive() {
+                    print!("\t{}", peer.persistent_keepalive);
+                } else {
+                    print!("\toff");
+                }
+            }
+
+
+            println!();
+        }
+    }
 }
 
 fn print_interface_pretty(config: &WgDevice) {
@@ -151,10 +263,16 @@ fn print_interface_pretty(config: &WgDevice) {
                     print!("{} ", format_pluralize(dura.whole_hours(), "hour", "hours"));
                 }
                 if dura.whole_minutes() > 0 {
-                    print!("{} ", format_pluralize(dura.whole_minutes(), "minute", "minutes"));
+                    print!(
+                        "{} ",
+                        format_pluralize(dura.whole_minutes(), "minute", "minutes")
+                    );
                 }
                 if dura.whole_seconds() > 0 {
-                    print!("{} ", format_pluralize(dura.whole_seconds(), "second", "seconds"));
+                    print!(
+                        "{} ",
+                        format_pluralize(dura.whole_seconds(), "second", "seconds")
+                    );
                 }
                 println!("ago");
             } else {
@@ -162,9 +280,16 @@ fn print_interface_pretty(config: &WgDevice) {
             }
         }
 
-        println!("  transfer: {} received, {} sent", format_bytes(peer.rx_bytes), format_bytes(peer.tx_bytes));
+        println!(
+            "  transfer: {} received, {} sent",
+            format_bytes(peer.rx_bytes),
+            format_bytes(peer.tx_bytes)
+        );
         if peer.has_persistent_keepalive() {
-            print!("  persistent keepalive: every {} seconds", peer.persistent_keepalive);
+            print!(
+                "  persistent keepalive: every {} seconds",
+                peer.persistent_keepalive
+            );
         }
 
         println!();
@@ -189,6 +314,9 @@ fn format_bytes(bytes: u64) -> String {
     } else if bytes < 1024 * 1024 * 1024 * 1024 {
         format!("{:.2} GiB", bytes as f64 / (1024_u64 * 1024 * 1024) as f64)
     } else {
-        format!("{:.2} TiB", bytes as f64 / (1024_u64 * 1024 * 1024 * 1024) as f64)
+        format!(
+            "{:.2} TiB",
+            bytes as f64 / (1024_u64 * 1024 * 1024 * 1024) as f64
+        )
     }
 }

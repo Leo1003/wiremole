@@ -78,7 +78,7 @@ impl Peer {
     }
 
     pub fn has_endpoint(&self) -> bool {
-        self.endpoint.ip().is_unspecified()
+        !self.endpoint.ip().is_unspecified()
     }
 }
 

@@ -59,6 +59,16 @@ impl ShowFields {
         self.persistent_keepalive = true;
         self.transfer = true;
     }
+
+    pub fn contains_peer_fields(&self) -> bool {
+        self.peers
+            || self.preshared_keys
+            || self.endpoints
+            || self.allowed_ips
+            || self.latest_handshakes
+            || self.persistent_keepalive
+            || self.transfer
+    }
 }
 
 impl Args for ShowCmd {
