@@ -19,7 +19,7 @@ fn base64_decode_checklen(input: &str, buf: &mut [u8; WG_KEY_LEN]) -> Result<(),
 
     // We have checked the base64 length before.
     // So the following operation should not panic.
-    let keylen = base64::decode_config_slice(input, base64::STANDARD, buf)?;
+    let keylen = base64::decode_engine_slice(input, buf, &base64::engine::DEFAULT_ENGINE)?;
     if keylen != WG_KEY_LEN {
         return Err(WireCtlError::InvalidKeyLength);
     }
@@ -133,12 +133,12 @@ impl PrivateKey {
 
     pub fn to_base64(&self) -> String {
         let buf = Zeroizing::new(self.0.to_bytes());
-        base64::encode(&*buf)
+        base64::encode(*buf)
     }
 
     pub fn to_hex(&self) -> String {
         let buf = Zeroizing::new(self.0.to_bytes());
-        hex::encode(&*buf)
+        hex::encode(*buf)
     }
 
     pub fn public_key(&self) -> PublicKey {
