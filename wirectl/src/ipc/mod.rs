@@ -4,7 +4,7 @@
 //! It communicates with programs such as `wireguard-go` by unix domain socket.
 //!
 //! For more detail protocol definition, read the [documentation](https://www.wireguard.com/xplatform/) by wireguard.
-use crate::{types::*, WireCtlError};
+use crate::{implementations::WgImpl, types::*, WireCtlError};
 use async_fs::{read_dir, remove_file};
 use async_net::unix::UnixStream;
 use async_process::Command;
@@ -15,8 +15,7 @@ use std::{
     borrow::Cow,
     env,
     ffi::OsStr,
-    fmt::Arguments,
-    io::{Error, ErrorKind, Write as _},
+    io::{Error, ErrorKind},
     os::unix::fs::FileTypeExt,
     path::PathBuf,
     str::FromStr,
@@ -41,49 +40,129 @@ static WG_USERSPACE_EXEC: Lazy<Cow<OsStr>> = Lazy::new(|| {
     exec
 });
 
-pub async fn create_interface(ifname: &str) -> Result<(), WireCtlError> {
-    let program: &OsStr = WG_USERSPACE_EXEC.as_ref();
-    let status = Command::new(program)
-        .arg(ifname)
-        .env_clear()
-        .status()
-        .await?;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ipc;
 
-    if !status.success() {
-        return Err(WireCtlError::UserspaceLaunch(status));
+#[async_trait]
+impl WgImpl for Ipc {
+    async fn create_interface<S>(ifname: &S) -> Result<(), WireCtlError>
+    where
+        S: AsRef<OsStr> + ?Sized + Send + Sync,
+    {
+        let program: &OsStr = WG_USERSPACE_EXEC.as_ref();
+        let status = Command::new(program)
+            .arg(ifname)
+            .env_clear()
+            .status()
+            .await?;
+
+        if !status.success() {
+            return Err(WireCtlError::UserspaceLaunch(status));
+        }
+
+        Ok(())
     }
 
-    Ok(())
+    async fn list_interfaces() -> Result<Vec<String>, WireCtlError> {
+        let mut sockdir = match read_dir(WG_SOCKET_PATH).await {
+            Ok(data) => data,
+            Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                    return Ok(Vec::new());
+                }
+                return Err(e.into());
+            }
+        };
+
+        let mut interfaces = Vec::new();
+        while let Some(entry) = sockdir.try_next().await? {
+            let meta = entry.metadata().await?;
+            if meta.file_type().is_socket() {
+                let sockname = PathBuf::from(entry.file_name());
+                if sockname.extension() != Some(OsStr::new(WG_SOCKET_SUFFIX)) {
+                    continue;
+                }
+
+                let ifname = sockname.file_stem().unwrap();
+                if check_device(ifname).await.is_ok() {
+                    interfaces.push(ifname.to_string_lossy().into_owned());
+                }
+            }
+        }
+
+        Ok(interfaces)
+    }
+
+    async fn remove_interface<S>(ifname: &S) -> Result<(), WireCtlError>
+    where
+        S: AsRef<OsStr> + ?Sized + Send + Sync,
+    {
+        todo!();
+    }
+
+    async fn check_device<S>(ifname: &S) -> Result<(), WireCtlError>
+    where
+        S: AsRef<OsStr> + ?Sized + Send + Sync,
+    {
+        let rslt = open_device(ifname).await;
+        rslt.map(|_| ())
+    }
+
+    async fn get_config<S>(ifname: &S) -> Result<WgDevice, WireCtlError>
+    where
+        S: AsRef<OsStr> + ?Sized + Send + Sync,
+    {
+        let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
+        ctrl_sock.write_all(b"get=1\n\n").await?;
+
+        parse_device_config(&mut ctrl_sock, ifname).await
+    }
+
+    async fn set_config<S>(ifname: &S, conf: WgDeviceSetter) -> Result<(), WireCtlError>
+    where
+        S: AsRef<OsStr> + ?Sized + Send + Sync,
+    {
+        let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
+
+        emit_device_config(&mut ctrl_sock, conf).await?;
+        ctrl_sock.flush().await?;
+
+        let mut curr_line = String::new();
+
+        // Read return errno
+        // Format:
+        // `errno=0`
+        ctrl_sock.read_line(&mut curr_line).await?;
+        let line = curr_line.trim_end();
+        let (key, value) = line.split_once('=').ok_or(WireCtlError::InvalidProtocol)?;
+        let errno = if key == "errno" {
+            value.parse::<i32>()?
+        } else {
+            return Err(WireCtlError::InvalidProtocol);
+        };
+
+        // Next line should be empty
+        curr_line.clear();
+        ctrl_sock.read_line(&mut curr_line).await?;
+        let line = curr_line.trim_end();
+        if !line.is_empty() {
+            return Err(WireCtlError::InvalidProtocol);
+        }
+
+        if errno == 0 {
+            Ok(())
+        } else {
+            Err(WireCtlError::DeviceError(errno))
+        }
+    }
+}
+
+pub async fn create_interface(ifname: &str) -> Result<(), WireCtlError> {
+    Ipc::create_interface(ifname).await
 }
 
 pub async fn list_interfaces() -> Result<Vec<String>, WireCtlError> {
-    let mut sockdir = match read_dir(WG_SOCKET_PATH).await {
-        Ok(data) => data,
-        Err(e) => {
-            if e.kind() == ErrorKind::NotFound {
-                return Ok(Vec::new());
-            }
-            return Err(e.into());
-        }
-    };
-
-    let mut interfaces = Vec::new();
-    while let Some(entry) = sockdir.try_next().await? {
-        let meta = entry.metadata().await?;
-        if meta.file_type().is_socket() {
-            let sockname = PathBuf::from(entry.file_name());
-            if sockname.extension() != Some(OsStr::new(WG_SOCKET_SUFFIX)) {
-                continue;
-            }
-
-            let ifname = sockname.file_stem().unwrap();
-            if check_device(ifname).await.is_ok() {
-                interfaces.push(ifname.to_string_lossy().into_owned());
-            }
-        }
-    }
-
-    Ok(interfaces)
+    Ipc::list_interfaces().await
 }
 
 async fn open_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStream, WireCtlError> {
@@ -107,24 +186,24 @@ async fn open_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<UnixStream,
     Ok(socket)
 }
 
-pub async fn check_device<S: AsRef<OsStr> + ?Sized>(ifname: &S) -> Result<(), WireCtlError> {
-    let rslt = open_device(ifname).await;
-    rslt.map(|_| ())
+pub async fn check_device<S>(ifname: &S) -> Result<(), WireCtlError>
+where
+    S: AsRef<OsStr> + ?Sized + Send + Sync,
+{
+    Ipc::check_device(ifname).await
 }
 
 pub async fn get_config(ifname: &str) -> Result<WgDevice, WireCtlError> {
-    let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
-    ctrl_sock.write_all(b"get=1\n\n").await?;
-
-    parse_device_config(&mut ctrl_sock, ifname).await
+    Ipc::get_config(ifname).await
 }
 
-async fn parse_device_config<S>(ctrl_sock: &mut S, ifname: &str) -> Result<WgDevice, WireCtlError>
+async fn parse_device_config<R, S>(ctrl_sock: &mut R, ifname: &S) -> Result<WgDevice, WireCtlError>
 where
-    S: AsyncBufRead + AsyncRead + Unpin + ?Sized,
+    R: AsyncBufRead + AsyncRead + Unpin + ?Sized,
+    S: AsRef<OsStr> + ?Sized + Send + Sync,
 {
     let mut errno = None;
-    let mut device = WgDevice::new(ifname);
+    let mut device = WgDevice::new(ifname.as_ref().to_string_lossy().as_ref());
 
     let mut curr_line = String::with_capacity(1024);
     ctrl_sock.read_line(&mut curr_line).await?;
@@ -242,79 +321,36 @@ where
     Ok(peer)
 }
 
-async fn write_fmt<S>(ctrl_sock: &mut S, args: Arguments<'_>) -> Result<(), WireCtlError>
-where
-    S: AsyncWrite + Unpin + ?Sized,
-{
-    let mut buf = Vec::new();
-    write!(&mut buf, "{}", args)
-        .map_err(|_| WireCtlError::Io(Error::new(ErrorKind::Other, "formatter error")))?;
-    ctrl_sock.write_all(buf.as_slice()).await?;
-    Ok(())
-}
-
 pub async fn set_config(ifname: &str, conf: WgDeviceSetter) -> Result<(), WireCtlError> {
-    let mut ctrl_sock = BufReader::new(open_device(ifname).await?);
-
-    emit_device_config(&mut ctrl_sock, conf).await?;
-    ctrl_sock.flush().await?;
-
-    let mut curr_line = String::new();
-
-    // Read return errno
-    // Format:
-    // `errno=0`
-    ctrl_sock.read_line(&mut curr_line).await?;
-    let line = curr_line.trim_end();
-    let (key, value) = line.split_once('=').ok_or(WireCtlError::InvalidProtocol)?;
-    let errno = if key == "errno" {
-        value.parse::<i32>()?
-    } else {
-        return Err(WireCtlError::InvalidProtocol);
-    };
-
-    // Next line should be empty
-    curr_line.clear();
-    ctrl_sock.read_line(&mut curr_line).await?;
-    let line = curr_line.trim_end();
-    if !line.is_empty() {
-        return Err(WireCtlError::InvalidProtocol);
-    }
-
-    if errno == 0 {
-        Ok(())
-    } else {
-        Err(WireCtlError::DeviceError(errno))
-    }
+    Ipc::set_config(ifname, conf).await
 }
 
 async fn emit_device_config<S>(ctrl_sock: &mut S, conf: WgDeviceSetter) -> Result<(), WireCtlError>
 where
     S: AsyncWrite + Unpin + ?Sized,
 {
-    write_fmt(ctrl_sock, format_args!("set=1\n")).await?;
+    ctrl_sock.write_all(b"set=1\n").await?;
 
     if let Some(privkey) = conf.privkey {
-        write_fmt(
-            ctrl_sock,
-            format_args!("private_key={}\n", privkey.to_hex()),
-        )
-        .await?;
+        let line = format!("private_key={}\n", privkey.to_hex());
+        ctrl_sock.write_all(line.as_bytes()).await?;
     }
     if let Some(fwmark) = conf.fwmark {
-        write_fmt(ctrl_sock, format_args!("fwmark={}\n", fwmark)).await?;
+        let line = format!("fwmark={}\n", fwmark);
+        ctrl_sock.write_all(line.as_bytes()).await?;
     }
     if let Some(listen_port) = conf.listen_port {
-        write_fmt(ctrl_sock, format_args!("listen_port={}\n", listen_port)).await?;
+        let line = format!("listen_port={}\n", listen_port);
+        ctrl_sock.write_all(line.as_bytes()).await?;
     }
     if conf.replace_peers {
-        write_fmt(ctrl_sock, format_args!("replace_peers=true\n")).await?;
+        ctrl_sock.write_all(b"replace_peers=true\n").await?;
     }
     for peer in conf.peers {
         emit_peer_config(ctrl_sock, peer).await?;
     }
     // End with empty line
-    write_fmt(ctrl_sock, format_args!("\n")).await?;
+    ctrl_sock.write_all(b"\n").await?;
 
     Ok(())
 }
@@ -323,40 +359,34 @@ async fn emit_peer_config<S>(ctrl_sock: &mut S, conf: PeerSetter) -> Result<(), 
 where
     S: AsyncWrite + Unpin + ?Sized,
 {
-    write_fmt(
-        ctrl_sock,
-        format_args!("public_key={}\n", conf.pubkey.to_hex()),
-    )
-    .await?;
+    let line = format!("public_key={}\n", conf.pubkey.to_hex());
+    ctrl_sock.write_all(line.as_bytes()).await?;
+
     if conf.remove {
-        write_fmt(ctrl_sock, format_args!("remove=true\n")).await?;
+        ctrl_sock.write_all(b"remove=true\n").await?;
         return Ok(());
     }
     if conf.update_only {
-        write_fmt(ctrl_sock, format_args!("update_only=true\n")).await?;
+        ctrl_sock.write_all(b"update_only=true\n").await?;
     }
     if let Some(preshared_key) = conf.preshared_key {
-        write_fmt(
-            ctrl_sock,
-            format_args!("preshared_key={}\n", preshared_key.to_hex()),
-        )
-        .await?;
+        let line = format!("preshared_key={}\n", preshared_key.to_hex());
+        ctrl_sock.write_all(line.as_bytes()).await?;
     }
     if let Some(endpoint) = conf.endpoint {
-        write_fmt(ctrl_sock, format_args!("endpoint={}\n", endpoint)).await?;
+        let line = format!("endpoint={}\n", endpoint);
+        ctrl_sock.write_all(line.as_bytes()).await?;
     }
     if let Some(keepalive) = conf.persistent_keepalive {
-        write_fmt(
-            ctrl_sock,
-            format_args!("persistent_keepalive_interval={}\n", keepalive),
-        )
-        .await?;
+        let line = format!("persistent_keepalive_interval={}\n", keepalive);
+        ctrl_sock.write_all(line.as_bytes()).await?;
     }
     if conf.replace_allowed_ips {
-        write_fmt(ctrl_sock, format_args!("replace_allowed_ips=true\n")).await?;
+        ctrl_sock.write_all(b"replace_allowed_ips=true\n").await?;
     }
     for allowed_ip in conf.allowed_ips {
-        write_fmt(ctrl_sock, format_args!("allowed_ip={}\n", allowed_ip)).await?;
+        let line = format!("allowed_ip={}\n", allowed_ip);
+        ctrl_sock.write_all(line.as_bytes()).await?;
     }
 
     Ok(())
